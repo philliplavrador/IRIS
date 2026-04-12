@@ -1,19 +1,15 @@
-import { BarChart3, FileText, FolderOpen, Presentation, Settings } from 'lucide-react'
+import { BarChart3, FileText, FolderOpen } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs'
 import { PlotViewer } from '../visualization/PlotViewer'
 import { ReportViewer } from '../ReportViewer'
 import { FileManager } from './FileManager'
-import { SlidesViewer } from './SlidesViewer'
-import { ProjectSettings } from './ProjectSettings'
 import type { WorkspaceTab } from '../../types'
 
 const tabs: Array<{ value: WorkspaceTab; label: string; icon: React.ReactNode }> = [
   { value: 'plots', label: 'Plots', icon: <BarChart3 className="h-3.5 w-3.5" /> },
   { value: 'report', label: 'Report', icon: <FileText className="h-3.5 w-3.5" /> },
   { value: 'files', label: 'Files', icon: <FolderOpen className="h-3.5 w-3.5" /> },
-  { value: 'slides', label: 'Slides', icon: <Presentation className="h-3.5 w-3.5" /> },
-  { value: 'settings', label: 'Settings', icon: <Settings className="h-3.5 w-3.5" /> },
 ]
 
 export function WorkspaceTabs() {
@@ -47,14 +43,6 @@ export function WorkspaceTabs() {
 
       <TabsContent value="files" className="flex-1 min-h-0">
         <FileManager />
-      </TabsContent>
-
-      <TabsContent value="slides" className="flex-1 min-h-0">
-        <SlidesViewer />
-      </TabsContent>
-
-      <TabsContent value="settings" className="flex-1 min-h-0">
-        <ProjectSettings />
       </TabsContent>
     </Tabs>
   )

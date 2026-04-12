@@ -19,9 +19,6 @@ casi-app/
 │   │   ├── agent.ts           POST /api/agent/send, /abort
 │   │   └── projects.ts        Project CRUD, file upload, report, sidecar
 │   ├── services/
-│   │   ├── conversation-log.ts   JSONL conversation persistence (TODO)
-│   │   ├── prompt-builder.ts     System prompt assembly with project context (TODO)
-│   │   ├── project-memory.ts     Per-project memory.yaml read/write (TODO)
 │   │   ├── daemon-client.ts      HTTP client to Python daemon (port 3002)
 │   │   └── watchers.ts           PlotWatcher + ReportWatcher (fs.watch)
 │   └── lib/
@@ -63,12 +60,11 @@ casi-app/
 - **Message parsing**: extracts tool_use blocks, plot paths (regex), and markdown content from SDK messages
 - **Virtualized chat**: `@tanstack/react-virtual` for large conversation histories
 
-## Pending work (from the pivot plan)
+## Pending work
 
 - Conversation persistence (JSONL logging + hydration on project open)
-- Project-scoped agent sessions (currently global singleton)
 - System prompt builder (inject project memory + data profiles + available ops)
-- Per-project memory.yaml read/write
+- Per-project memory.yaml read/write service
 - Suggestions UI (recommended next analysis steps)
 - Data preview in FileManager (tabular grid, HDF5 tree)
 - SlidesViewer (PowerPoint generation from report + plots)

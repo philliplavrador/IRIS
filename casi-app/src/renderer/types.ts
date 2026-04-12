@@ -42,7 +42,7 @@ export interface ToolUseInfo {
   output?: string
 }
 
-export type WorkspaceTab = 'plots' | 'report' | 'files' | 'slides' | 'settings'
+export type WorkspaceTab = 'plots' | 'report' | 'files'
 
 export type SectionStatus = 'draft' | 'approved' | 'needs-revision'
 

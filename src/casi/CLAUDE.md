@@ -6,27 +6,46 @@ The `casi` Python package provides the analysis engine, operation library, proje
 
 | File | What it does |
 |---|---|
-| [engine_monolith.py](engine_monolith.py) | DSL parser, AST executor, op registry, `PipelineCache`, all 17 op handlers, source loaders, type system. The core of CASI. |
+| [engine/](engine/) | Modular engine package — types, AST, parser, cache, executor, ops, registry, factory. |
 | [cli.py](cli.py) | `casi` CLI entry point. Thin wrapper — parsing + orchestration only. |
 | [config.py](config.py) | YAML config loading + path expansion + `apply_project_overrides` for per-project overrides. |
 | [sessions.py](sessions.py) | Session directory creation, `manifest.json`, provenance sidecars per plot. |
 | [projects.py](projects.py) | Project workspace lifecycle: create, open, list, append_history. Manages `projects/<name>/` and `.casi/active_project`. |
-| [plot_backends/](plot_backends/) | Pluggable plot backends: matplotlib, matplotlib_widget, pyqtgraph, pyqplot. |
+| [plot_backends/](plot_backends/) | Plot backends: matplotlib, matplotlib_widget. |
 | [daemon/](daemon/) | FastAPI server (port 3002) — HTTP API for running ops, profiling data, managing projects. Called by the Express backend. |
 
-## Key anchors in engine_monolith.py
+## Engine package structure
 
-- `TYPE_TRANSITIONS` — the op type graph. Input → output types per op name.
-- `PipelineCache` — two-tier cache (memory + disk). `cache_dir` points at `<project>/.cache/` for isolation.
-- `create_registry()` — assembles op registry + source loaders.
-- `run_pipeline()` — top-level executor called by CLI and daemon.
+```
+engine/
+  __init__.py       Re-exports (same public API surface — always import from casi.engine)
+  types.py          16 data type dataclasses (PipelineContext, MEATrace, SpikeTrain, etc.)
+  type_system.py    TYPE_TRANSITIONS, DIRECT_BANK_OPS, DataType enum
+  registry.py       OpRegistry class
+  ast.py            SourceNode, OpNode, ExprNode, WindowDirective, OverlayGroup
+  parser.py         DSLParser class
+  cache.py          PipelineCache class (two-tier: memory + disk)
+  executor.py       PipelineExecutor + run_pipeline top-level API
+  loaders.py        Source loaders (MEA, calcium, RTSort) + data caches
+  helpers.py        Pure signal processing helpers (spike detection, cross-correlation)
+  margins.py        Margin calculators for filter ops
+  factory.py        create_registry() assembler
+  ops/
+    filtering.py    butter_bandpass, notch_filter, amp_gain_correction
+    detection.py    sliding_rms, constant_rms, rt_detect, rt_thresh, sigmoid
+    analysis.py     spike_pca, spike_curate, baseline_correction
+    simulation.py   gcamp_sim + _build_gcamp_kernel
+    correlation.py  x_corr
+    spectral.py     spectrogram, freq_traces
+    saturation.py   saturation_mask, saturation_survey
+```
 
 ## Adding a new operation (hardcoded)
 
 Six touch points:
-1. `engine_monolith.py` — add to `TYPE_TRANSITIONS`
-2. `engine_monolith.py` — write the `op_<name>` handler
-3. `engine_monolith.py` — `registry.register_op("<name>", op_<name>)` in `create_registry()`
+1. `engine/type_system.py` — add to `TYPE_TRANSITIONS`
+2. `engine/ops/<category>.py` — write the `op_<name>` handler
+3. `engine/factory.py` — `registry.register_op("<name>", op_<name>)` in `create_registry()`
 4. `configs/ops.yaml` — defaults entry
 5. `docs/operations.md` — documentation section (math, signature, params)
 6. `tests/test_op_registry.py` — type-transition test
