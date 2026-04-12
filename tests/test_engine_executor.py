@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from casi.engine import (
+from iris.engine import (
     DSLParser,
     MEATrace,
     OpRegistry,

@@ -1,8 +1,8 @@
-# CASI Repo Refactoring Plan
+# IRIS Repo Refactoring Plan
 
 ## Context
 
-CASI is a local AI-powered data analysis webapp, but the repo carries ~91GB of legacy data, a 2,461-line monolithic engine file mixing six concerns, three plot backends when only one is used, empty top-level directories, and duplicate type definitions from an abandoned partial refactor. The goal is to strip the repo down to what actually serves the webapp-first direction, split the monolith into clean modules, and consolidate the two serving surfaces (CLI vs daemon).
+IRIS is a local AI-powered data analysis webapp, but the repo carries ~91GB of legacy data, a 2,461-line monolithic engine file mixing six concerns, three plot backends when only one is used, empty top-level directories, and duplicate type definitions from an abandoned partial refactor. The goal is to strip the repo down to what actually serves the webapp-first direction, split the monolith into clean modules, and consolidate the two serving surfaces (CLI vs daemon).
 
 ---
 
@@ -16,13 +16,13 @@ Pure deletion. Zero behavioral change.
 - Remove `legacy` from ruff's `extend-exclude` in `pyproject.toml` if present
 
 ### 0b: Delete unused plot backends
-- Delete `src/casi/plot_backends/pyqtgraph_backend.py` (533 LOC)
-- Delete `src/casi/plot_backends/pyqplot_backend.py` (442 LOC)
-- Simplify `src/casi/plot_backends/__init__.py`: remove `elif` branches for pyqtgraph/pyqplot, reduce `VALID_BACKENDS` to `("matplotlib", "matplotlib_widget")`
+- Delete `src/iris/plot_backends/pyqtgraph_backend.py` (533 LOC)
+- Delete `src/iris/plot_backends/pyqplot_backend.py` (442 LOC)
+- Simplify `src/iris/plot_backends/__init__.py`: remove `elif` branches for pyqtgraph/pyqplot, reduce `VALID_BACKENDS` to `("matplotlib", "matplotlib_widget")`
 - Remove `params_text_block()` from `_common.py` if only used by deleted backends (verify first)
 
 ### 0c: Delete stale engine split artifacts
-- Delete `src/casi/engine/types.py` (dead duplicate, never imported by anything real)
+- Delete `src/iris/engine/types.py` (dead duplicate, never imported by anything real)
 - `engine/type_system.py` stays for now — consumed in Phase 1
 
 ### 0d: Clean up empty/stale top-level directories
@@ -36,11 +36,11 @@ Pure deletion. Zero behavioral change.
 
 ## Phase 1 — Split the Engine Monolith
 
-Decompose `engine_monolith.py` (2,461 LOC) into focused modules under `src/casi/engine/`. The `engine/__init__.py` re-exports the same public names throughout, so all callers (CLI, daemon, tests, plot backends) keep working without changes.
+Decompose `engine_monolith.py` (2,461 LOC) into focused modules under `src/iris/engine/`. The `engine/__init__.py` re-exports the same public names throughout, so all callers (CLI, daemon, tests, plot backends) keep working without changes.
 
 ### Target structure
 ```
-src/casi/engine/
+src/iris/engine/
   __init__.py       Re-exports (same public API surface)
   types.py          16 data type dataclasses (~230 LOC)
   type_system.py    TYPE_TRANSITIONS, DIRECT_BANK_OPS, DataType enum (~40 LOC)
@@ -78,7 +78,7 @@ src/casi/engine/
 10. **margins.py** — Two margin calculators. Imports `types`.
 11. **executor.py** — PipelineExecutor + run_pipeline. Imports types, type_system, registry, ast, cache.
 12. **factory.py** — create_registry(). Imports ops/*, margins, loaders, plot_backends.
-13. **`__init__.py`** — Rewrite to import from new modules instead of `from casi.engine_monolith import *`.
+13. **`__init__.py`** — Rewrite to import from new modules instead of `from iris.engine_monolith import *`.
 14. **Delete `engine_monolith.py`**.
 
 ### Import dependency graph (acyclic)
@@ -121,11 +121,11 @@ The daemon is the webapp's Python interface but is weaker than the CLI. Fix that
 - `GET /api/projects/find-plot` — plot dedup lookup
 
 ### 2c: Fix webapp agent-bridge issues
-- **Per-project sessions**: Change `sessionId` (global singleton on line 32 of `casi-app/server/agent-bridge.ts`) to `Map<string, string>` keyed by project name
+- **Per-project sessions**: Change `sessionId` (global singleton on line 32 of `iris-app/server/agent-bridge.ts`) to `Map<string, string>` keyed by project name
 - **Hardcoded path**: The `D:\\Apps\\Git\\bin\\bash.exe` fallback list is fine as-is (already behind env var check), but add `which bash` as first attempt before the static list
 
 ### 2d: Wire up TODO service stubs
-- `casi-app/server/services/` has 3 TODO stub files (conversation-log.ts, prompt-builder.ts, project-memory.ts). Either implement or delete — stubs add confusion.
+- `iris-app/server/services/` has 3 TODO stub files (conversation-log.ts, prompt-builder.ts, project-memory.ts). Either implement or delete — stubs add confusion.
 
 ---
 
@@ -142,7 +142,7 @@ Additive only. No risk.
 - `tests/test_daemon.py` — FastAPI TestClient for each route (valid + invalid inputs)
 
 ### 3c: Webapp tests
-- `casi-app/src/renderer/__tests__/lib/message-parser.test.ts` — the most complex frontend logic
+- `iris-app/src/renderer/__tests__/lib/message-parser.test.ts` — the most complex frontend logic
 
 ---
 
@@ -150,8 +150,8 @@ Additive only. No risk.
 
 ### 4a: Update CLAUDE.md files
 - Root `CLAUDE.md`: update architecture diagram, remove legacy references
-- `src/casi/CLAUDE.md`: replace monolith references with new module map, update "Adding a new operation" checklist (6 touch points now span specific files instead of all being in engine_monolith.py)
-- `casi-app/CLAUDE.md`: update pending work list
+- `src/iris/CLAUDE.md`: replace monolith references with new module map, update "Adding a new operation" checklist (6 touch points now span specific files instead of all being in engine_monolith.py)
+- `iris-app/CLAUDE.md`: update pending work list
 
 ### 4b: Webapp placeholders
 - Remove SlidesViewer and ProjectSettings tabs from WorkspaceTabs until implemented (dead UI)
@@ -163,7 +163,7 @@ Additive only. No risk.
 After each phase:
 - `uv run pytest -x -q` — all Python tests pass
 - `uv run ruff check src tests` — no lint errors
-- `cd casi-app && npm run dev` — webapp starts, chat works, plots render
+- `cd iris-app && npm run dev` — webapp starts, chat works, plots render
 - Manually test: create project -> upload data -> run a DSL string -> see plot
 
 ---

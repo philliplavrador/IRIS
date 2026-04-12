@@ -25,12 +25,12 @@ def main():
 
     subprocess.run(
         ["uv", "run", "ruff", "check", "--fix", file_path],
-        cwd="d:/Projects/CASI",
+        cwd="d:/Projects/IRIS",
         capture_output=True,
     )
     subprocess.run(
         ["uv", "run", "ruff", "format", file_path],
-        cwd="d:/Projects/CASI",
+        cwd="d:/Projects/IRIS",
         capture_output=True,
     )
 

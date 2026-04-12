@@ -1,9 +1,9 @@
-# Per-project CASI config. Values here override the global configs/ files
+# Per-project IRIS config. Values here override the global configs/ files
 # for this project only. Leave any section empty ({}) to inherit defaults.
 
-name: null                 # filled in by `casi project new`
-description: null          # filled in by `casi project new`
-created_at: null           # ISO 8601, filled in by `casi project new`
+name: null                 # filled in by `iris project new`
+description: null          # filled in by `iris project new`
+created_at: null           # ISO 8601, filled in by `iris project new`
 
 # Optional overrides merged into cfg.paths / cfg.ops / cfg.globals.
 # Example: ops_overrides: { butter_bandpass: { low_hz: 500 } }

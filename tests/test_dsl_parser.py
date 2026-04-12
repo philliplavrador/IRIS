@@ -1,7 +1,7 @@
 """DSL parser round-trip tests."""
 from __future__ import annotations
 
-from casi.engine import DSLParser, ExprNode, OverlayGroup, WindowDirective
+from iris.engine import DSLParser, ExprNode, OverlayGroup, WindowDirective
 
 
 def test_window_ms_parses():

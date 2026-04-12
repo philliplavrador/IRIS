@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for the CASI test suite."""
+"""Shared pytest fixtures for the IRIS test suite."""
 from __future__ import annotations
 
 import sys
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-# Make `casi` importable without installing the package — works for both
+# Make `iris` importable without installing the package — works for both
 # `uv run pytest` (which installs in dev mode) and `python -m pytest` from
 # a fresh checkout.
 SRC = Path(__file__).resolve().parents[1] / "src"

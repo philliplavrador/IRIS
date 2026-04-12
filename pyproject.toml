@@ -1,7 +1,7 @@
 [project]
-name = "casi"
+name = "iris"
 version = "0.1.0"
-description = "CASI: Calcium-Assisted Spike Identity. Construction of optically-grounded ground-truth datasets for spike sorting benchmarks via simultaneous calcium imaging and multi-electrode array recording."
+description = "IRIS: Calcium-Assisted Spike Identity. Construction of optically-grounded ground-truth datasets for spike sorting benchmarks via simultaneous calcium imaging and multi-electrode array recording."
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -56,21 +56,21 @@ dev = [
 ]
 
 [project.scripts]
-casi = "casi.cli:main"
-casi-daemon = "casi.daemon.app:run"
+iris = "iris.cli:main"
+iris-daemon = "iris.daemon.app:run"
 
 [project.urls]
-Homepage      = "https://github.com/philliplavrador/CASI"
-Repository    = "https://github.com/philliplavrador/CASI"
-Documentation = "https://github.com/philliplavrador/CASI/tree/main/docs"
-Issues        = "https://github.com/philliplavrador/CASI/issues"
+Homepage      = "https://github.com/philliplavrador/IRIS"
+Repository    = "https://github.com/philliplavrador/IRIS"
+Documentation = "https://github.com/philliplavrador/IRIS/tree/main/docs"
+Issues        = "https://github.com/philliplavrador/IRIS/issues"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/casi"]
+packages = ["src/iris"]
 
 [tool.ruff]
 line-length = 100

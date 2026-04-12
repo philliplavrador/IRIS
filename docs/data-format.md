@@ -1,16 +1,16 @@
-# Data formats expected by CASI
+# Data formats expected by IRIS
 
-CASI's source loaders read three kinds of input data. This page documents what the loader expects in each file so you can prepare your own recordings without trial-and-error.
+IRIS's source loaders read three kinds of input data. This page documents what the loader expects in each file so you can prepare your own recordings without trial-and-error.
 
 ## MEA recordings — `mea_h5`
 
-**Loader:** `casi.engine.load_mea_recording` → `spikeinterface.extractors.MaxwellRecordingExtractor`
+**Loader:** `iris.engine.load_mea_recording` → `spikeinterface.extractors.MaxwellRecordingExtractor`
 
 **Format:** Maxwell Biosystems `.raw.h5` files produced by the MaxOne / MaxTwo recording systems.
 
 **Sample rate:** 20 kHz (default; override via `mea_fs_hz` in `run_pipeline`).
 
-**Channel addressing:** the DSL uses **Maxwell channel IDs**, not row indices. These are non-sequential integer strings (`'0', '2', '4', ...`) — channel 861 is row 478 in the recording, etc. CASI maps channel IDs to row indices automatically; you only need to specify channel IDs in DSL strings.
+**Channel addressing:** the DSL uses **Maxwell channel IDs**, not row indices. These are non-sequential integer strings (`'0', '2', '4', ...`) — channel 861 is row 478 in the recording, etc. IRIS maps channel IDs to row indices automatically; you only need to specify channel IDs in DSL strings.
 
 **Metadata extracted:**
 - `recording.get_channel_ids()` — channel ID strings
@@ -22,7 +22,7 @@ CASI's source loaders read three kinds of input data. This page documents what t
 
 ## Calcium imaging traces — `ca_traces_npz`
 
-**Loader:** `casi.engine.load_ca_trace`
+**Loader:** `iris.engine.load_ca_trace`
 
 **Format:** numpy `.npz` archive with the following keys:
 
@@ -39,7 +39,7 @@ The frame times must be in MEA-sample units so the loader can interpolate calciu
 
 ## RTSort precomputed outputs — `rt_model_outputs_npy`
 
-**Loader:** `casi.engine.load_rtsort`
+**Loader:** `iris.engine.load_rtsort`
 
 **Format:** numpy `.npy` array of shape `(n_channels, n_samples_trimmed)`. Each row is the precomputed sigmoid output of the RT-Sort CNN for one channel. The array is already trimmed by the model's front and end buffers.
 
@@ -53,7 +53,7 @@ The frame times must be in MEA-sample units so the loader can interpolate calciu
 
 ## RTSort model weights — `rt_model_path`
 
-**Loader:** `casi.engine._load_rtsort_model`
+**Loader:** `iris.engine._load_rtsort_model`
 
 **Format:** a directory containing the two files:
 - `init_dict.json` — model architecture / hyperparameters
@@ -83,13 +83,13 @@ legacy/models/rtsort_model/
 └── state_dict.pt
 ```
 
-These are referenced by the default `configs/paths.yaml` so you can verify the install with `casi config validate` immediately after cloning.
+These are referenced by the default `configs/paths.yaml` so you can verify the install with `iris config validate` immediately after cloning.
 
 ## Adding your own recordings
 
 1. Drop your Maxwell `.raw.h5` somewhere accessible
 2. Generate a `.npz` with `traces` + `frame_times` from your calcium imaging pipeline (frame times in MEA-sample units)
-3. Run `casi config edit paths mea_h5 /your/recording.h5`
-4. Run `casi config edit paths ca_traces_npz /your/calcium.npz`
-5. Run `casi config validate` to confirm the loader sees them
+3. Run `iris config edit paths mea_h5 /your/recording.h5`
+4. Run `iris config edit paths ca_traces_npz /your/calcium.npz`
+5. Run `iris config validate` to confirm the loader sees them
 6. Run any DSL expression you want — the cache key includes file mtimes so you'll never accidentally hit a stale result from a different recording

@@ -1,18 +1,18 @@
 version: '3.8'
 
 services:
-  casi:
+  iris:
     build: .
     ports:
-      - "3001:3001"
+      - "4001:4001"
     volumes:
-      - casi-data:/app/projects
+      - iris-data:/app/projects
     environment:
-      - CASI_ROOT=/app
+      - IRIS_ROOT=/app
       - NODE_ENV=production
-      - CASI_DAEMON_PORT=3002
+      - IRIS_DAEMON_PORT=4002
     restart: unless-stopped
 
 volumes:
-  casi-data:
+  iris-data:
     driver: local

@@ -1,11 +1,11 @@
-# Multi-stage Dockerfile for CASI production deployment
+# Multi-stage Dockerfile for IRIS production deployment
 
 # Stage 1: Build frontend
 FROM node:22-slim AS frontend
-WORKDIR /app/casi-app
-COPY casi-app/package*.json .
+WORKDIR /app/iris-app
+COPY iris-app/package*.json .
 RUN npm ci
-COPY casi-app/ .
+COPY iris-app/ .
 RUN npm run build
 
 # Stage 2: Install Python dependencies
@@ -36,16 +36,16 @@ COPY projects/TEMPLATE/ projects/TEMPLATE/
 COPY --from=frontend /app/dist ./dist
 
 # Copy server files
-COPY casi-app/server ./casi-app/server
-COPY casi-app/package*.json ./casi-app/
-RUN cd casi-app && npm ci --production
+COPY iris-app/server ./iris-app/server
+COPY iris-app/package*.json ./iris-app/
+RUN cd iris-app && npm ci --production
 
 # Environment
-ENV CASI_ROOT=/app
+ENV IRIS_ROOT=/app
 ENV NODE_ENV=production
 ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 3001
 
 # Start Express server (which auto-starts the Python daemon)
-CMD ["node", "casi-app/server/index.js"]
+CMD ["node", "iris-app/server/index.js"]

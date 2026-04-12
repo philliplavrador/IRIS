@@ -11,7 +11,7 @@ Pytest suite using synthetic data. Runs headless — no hardware data or uploads
 
 ```bash
 uv run pytest -x -q          # Python tests (ops, engine, config, sessions)
-cd casi-app && npm test       # Webapp tests (vitest + testing-library)
+cd iris-app && npm test       # Webapp tests (vitest + testing-library)
 ```
 
 ## Adding a test for a new op
@@ -26,5 +26,5 @@ def test_<op_name>_transitions():
 
 ## See also
 - [../CLAUDE.md](../CLAUDE.md) — repo root nav
-- [../src/casi/CLAUDE.md](../src/casi/CLAUDE.md) — package layout + op authoring checklist
+- [../src/iris/CLAUDE.md](../src/iris/CLAUDE.md) — package layout + op authoring checklist
 - [../docs/operations.md](../docs/operations.md) — op catalog

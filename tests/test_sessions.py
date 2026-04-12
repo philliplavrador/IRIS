@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from casi.engine import DSLParser, PipelineContext
-from casi.sessions import (
+from iris.engine import DSLParser, PipelineContext
+from iris.sessions import (
     list_sessions,
     new_session,
     write_manifest,
@@ -61,7 +61,7 @@ def test_write_manifest_produces_valid_json(tmp_path):
     paths_cfg = {"mea_h5": str(fake_file), "output_dir": str(sd), "cache_dir": str(tmp_path / "cache")}
     write_manifest(sd, ctx, paths_cfg, ops_cfg={"butter_bandpass": {"low_hz": 350}}, globals_cfg={"plot_backend": "matplotlib"})
     manifest = json.loads((sd / "manifest.json").read_text())
-    assert manifest["casi_version"]
+    assert manifest["iris_version"]
     assert manifest["paths"]["mea_h5"] == str(fake_file)
     assert manifest["sources"]["mea_h5"]["mtime"] > 0
     assert manifest["sources"]["mea_h5"]["size"] == 4

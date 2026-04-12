@@ -1,4 +1,4 @@
-# Global execution settings for the CASI pipeline.
+# Global execution settings for the IRIS pipeline.
 
 # --- Plot backend ---
 #
@@ -6,7 +6,7 @@
 # matplotlib_widget  — interactive ipympl widget for Jupyter notebooks
 # pyqtgraph          — standalone desktop GUI window (live exploration)
 # pyqplot            — publication-quality PDF/SVG via the qplot C++ binary
-#                      (requires `pip install casi[publication]` AND the qplot
+#                      (requires `pip install iris[publication]` AND the qplot
 #                       binary on PATH — see https://github.com/wagenadl/qplot)
 plot_backend: matplotlib
 

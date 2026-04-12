@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "app": "npm run dev --prefix casi-app",
-    "app:build": "npm run build --prefix casi-app"
+    "app": "npm run dev --prefix iris-app",
+    "app:build": "npm run build --prefix iris-app"
   }
 }

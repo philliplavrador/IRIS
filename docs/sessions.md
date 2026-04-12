@@ -1,6 +1,6 @@
 # Sessions and provenance
 
-Every CASI pipeline run lives in its own **session directory** under `outputs/`. The session directory bundles the analysis configuration, the generated plots, and a per-plot **sidecar JSON** with the full provenance metadata so any plot can be reproduced even if the parent session is lost.
+Every IRIS pipeline run lives in its own **session directory** under `outputs/`. The session directory bundles the analysis configuration, the generated plots, and a per-plot **sidecar JSON** with the full provenance metadata so any plot can be reproduced even if the parent session is lost.
 
 ## Session directory layout
 
@@ -23,7 +23,7 @@ The directory name has the form `YYYY-MM-DD_session_NNN[_label]`:
 Create a new session via the CLI:
 
 ```bash
-casi session new --label test-b
+iris session new --label test-b
 # outputs/2026-04-10_session_001_test-b
 ```
 
@@ -31,11 +31,11 @@ Or via the Claude Code agent — it creates one automatically after you confirm 
 
 ## `manifest.json` schema
 
-Written once when the session is created (and updated by the CLI's `casi run` command). Snapshots the active configuration so you know exactly what produced the session even if `configs/` was edited afterward.
+Written once when the session is created (and updated by the CLI's `iris run` command). Snapshots the active configuration so you know exactly what produced the session even if `configs/` was edited afterward.
 
 ```json
 {
-  "casi_version": "0.1.0",
+  "iris_version": "0.1.0",
   "created_at": "2026-04-10T13:42:11",
   "session_dir": "outputs/2026-04-10_session_001_test-b",
   "paths": {
@@ -65,7 +65,7 @@ Written once when the session is created (and updated by the CLI's `casi run` co
 View a session's manifest via the CLI:
 
 ```bash
-casi session show 2026-04-10_session_001_test-b
+iris session show 2026-04-10_session_001_test-b
 ```
 
 ## Sidecar `<plot>.json` schema
@@ -74,7 +74,7 @@ Written next to **every** saved plot. Contains the full DSL expression and all p
 
 ```json
 {
-  "casi_version": "0.1.0",
+  "iris_version": "0.1.0",
   "timestamp": "2026-04-10T13:42:23",
   "plot_file": "plot_001_mea_trace_861_butter_bandpass_spectrogram_0.png",
   "dsl": "mea_trace(861).butter_bandpass.spectrogram",
@@ -136,7 +136,7 @@ For function-ops like `x_corr` and `spike_curate`, the inner expression is captu
 
 ```python
 import json
-from casi.engine import create_registry, run_pipeline
+from iris.engine import create_registry, run_pipeline
 
 with open("outputs/.../plot_001_*.png.json") as f:
     sidecar = json.load(f)
@@ -161,7 +161,7 @@ run_pipeline(
 ## Listing past sessions
 
 ```bash
-casi session list
+iris session list
 # 2026-04-10_session_001_test-b                                  3 plot(s)
 # 2026-04-09_session_002_qc                                      7 plot(s)
 # 2026-04-09_session_001                                         1 plot(s)

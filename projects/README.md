@@ -1,4 +1,4 @@
-# CASI Projects
+# IRIS Projects
 
 A **project** is a durable analysis workspace. Each project bundles:
 
@@ -14,14 +14,14 @@ A **project** is a durable analysis workspace. Each project bundles:
 ## Lifecycle
 
 ```bash
-casi project new my-analysis --description "jGCaMP8m kinetics study"
-casi project open my-analysis
-casi run "mea_trace(861).butter_bandpass.spectrogram"    # writes to projects/my-analysis/output/
-casi project list
-casi project close
+iris project new my-analysis --description "jGCaMP8m kinetics study"
+iris project open my-analysis
+iris run "mea_trace(861).butter_bandpass.spectrogram"    # writes to projects/my-analysis/output/
+iris project list
+iris project close
 ```
 
-The active project is tracked in `.casi/active_project` at the repo root (untracked).
+The active project is tracked in `.iris/active_project` at the repo root (untracked).
 
 ## Git
 
@@ -35,4 +35,4 @@ New projects are created by copying `TEMPLATE/`. To change the default skeleton,
 
 - [../CLAUDE.md](../CLAUDE.md) — repo-root navigation
 - [../docs/projects.md](../docs/projects.md) — full project contract
-- [../src/casi/projects.py](../src/casi/projects.py) — project lifecycle API
+- [../src/iris/projects.py](../src/iris/projects.py) — project lifecycle API

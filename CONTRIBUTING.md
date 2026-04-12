@@ -1,4 +1,4 @@
-# Contributing to CASI
+# Contributing to IRIS
 
 Thanks for your interest! Issues, PRs, and discussion are welcome.
 
@@ -24,7 +24,7 @@ Please include:
 - The DSL string you ran (or a minimal repro)
 - The contents of `configs/globals.yaml` and the relevant chunk of `configs/ops.yaml`
 - The full traceback or error message
-- The output of `casi --version` and `python --version`
+- The output of `iris --version` and `python --version`
 - Operating system
 
 If the bug is data-dependent and you can share a small synthetic example via `tests/synthetic_data.py`, that's the gold standard.

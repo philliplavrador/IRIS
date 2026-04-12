@@ -1,4 +1,4 @@
-# CASI operation proposal — `<op_name>`
+# IRIS operation proposal — `<op_name>`
 
 > This document is the design spec the analysis agent fills out **before** writing any code for a new op. It lives in `docs/op-proposals/<op_name>.md`. Once the op is implemented and merged, this file can be deleted or moved to `docs/op-proposals/archive/`.
 >
@@ -14,7 +14,7 @@
 
 ## 2. Signature
 
-List every `{input_type: output_type}` pair this op should support. Copy from the existing types in [`src/casi/engine.py`](../src/casi/engine.py) — do NOT invent new data classes without a separate proposal for each.
+List every `{input_type: output_type}` pair this op should support. Copy from the existing types in [`src/iris/engine.py`](../src/iris/engine.py) — do NOT invent new data classes without a separate proposal for each.
 
 ```
 MEATrace  -> MEATrace
@@ -76,7 +76,7 @@ This is the **gate** that prevents building the wrong op. The agent must fill ou
 
 - **What could go wrong:** <at least one of — "I might be building the wrong op," "I misunderstood the user's request," "the user might actually need an existing op they don't know about">. Address each risk in one sentence.
 
-If the agent cannot convincingly fill in all three, it must STOP and surface the mismatch to the user with the exact phrasing from `.claude/agents/casi.md` § "Autonomous op creation":
+If the agent cannot convincingly fill in all three, it must STOP and surface the mismatch to the user with the exact phrasing from `.claude/agents/iris.md` § "Autonomous op creation":
 
 > "I might be building the wrong thing. Your goal is X; this op solves Y. Which is it?"
 
@@ -110,9 +110,9 @@ List any synthetic-data tests you'll add (e.g. "pure-tone input → filtered out
 
 ## 9. Six-touch-point checklist (enforced by `scripts/check_op_registered.py`)
 
-- [ ] 1. `TYPE_TRANSITIONS["<name>"]` entry in `src/casi/engine.py`
-- [ ] 2. `def op_<name>(...)` handler function in `src/casi/engine.py`
-- [ ] 3. `registry.register_op("<name>", op_<name>)` inside `create_registry()` in `src/casi/engine.py`
+- [ ] 1. `TYPE_TRANSITIONS["<name>"]` entry in `src/iris/engine.py`
+- [ ] 2. `def op_<name>(...)` handler function in `src/iris/engine.py`
+- [ ] 3. `registry.register_op("<name>", op_<name>)` inside `create_registry()` in `src/iris/engine.py`
 - [ ] 4. `<name>:` defaults entry in `configs/ops.yaml`
 - [ ] 5. `## \`<name>\` —` section in `docs/operations.md` with the math, parameters, and citations
 - [ ] 6. `test_<name>_transitions` test in `tests/test_op_registry.py`

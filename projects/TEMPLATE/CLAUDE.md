@@ -1,6 +1,6 @@
 # Project navigation
 
-This is a CASI project workspace. The webapp and analysis agent use this project to scope all work — uploaded data, conversations, memory, plots, and reports live here.
+This is a IRIS project workspace. The webapp and analysis agent use this project to scope all work — uploaded data, conversations, memory, plots, and reports live here.
 
 ## Read on startup (in order)
 1. `claude_config.yaml` — project name, description, and per-project overrides

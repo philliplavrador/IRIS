@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from casi.engine.types import CATrace, MEATrace, PipelineContext, RTTrace, SpikePCA, SpikeTrain
+from iris.engine.types import CATrace, MEATrace, PipelineContext, RTTrace, SpikePCA, SpikeTrain
 from synthetic_data import synth_calcium_trace, synth_mea_trace
 
 # Shared context for all ops
@@ -42,7 +42,7 @@ def _make_spike_train(duration_ms=1000.0, fs_hz=20000.0, seed=0):
 # -- Filtering ops --
 
 def test_butter_bandpass():
-    from casi.engine.ops.filtering import op_butter_bandpass
+    from iris.engine.ops.filtering import op_butter_bandpass
     inp = _make_mea_trace()
     result = op_butter_bandpass(inp, _CTX, low_hz=300, high_hz=3000, order=4)
     assert isinstance(result, MEATrace)
@@ -51,7 +51,7 @@ def test_butter_bandpass():
 
 
 def test_notch_filter():
-    from casi.engine.ops.filtering import op_notch_filter
+    from iris.engine.ops.filtering import op_notch_filter
     inp = _make_mea_trace()
     result = op_notch_filter(inp, _CTX, notch_freq_hz=60.0, notch_q=30.0)
     assert isinstance(result, MEATrace)
@@ -59,7 +59,7 @@ def test_notch_filter():
 
 
 def test_amp_gain_correction():
-    from casi.engine.ops.filtering import op_amp_gain_correction
+    from iris.engine.ops.filtering import op_amp_gain_correction
     inp = _make_mea_trace()
     result = op_amp_gain_correction(inp, _CTX, broadband_range_hz=[300, 3000])
     assert isinstance(result, MEATrace)
@@ -69,7 +69,7 @@ def test_amp_gain_correction():
 # -- Detection ops --
 
 def test_sliding_rms():
-    from casi.engine.ops.detection import op_sliding_rms
+    from iris.engine.ops.detection import op_sliding_rms
     inp = _make_mea_trace()
     result = op_sliding_rms(inp, _CTX, k=5.0, half_window_ms=50.0, min_spike_distance_ms=1.0)
     assert isinstance(result, SpikeTrain)
@@ -77,7 +77,7 @@ def test_sliding_rms():
 
 
 def test_constant_rms():
-    from casi.engine.ops.detection import op_constant_rms
+    from iris.engine.ops.detection import op_constant_rms
     inp = _make_mea_trace()
     result = op_constant_rms(inp, _CTX, k=5.0, min_spike_distance_ms=1.0)
     assert isinstance(result, SpikeTrain)
@@ -85,7 +85,7 @@ def test_constant_rms():
 
 
 def test_sigmoid():
-    from casi.engine.ops.detection import op_sigmoid
+    from iris.engine.ops.detection import op_sigmoid
     inp = RTTrace(data=np.array([0.0, 1.0, -1.0, 5.0]), fs_hz=20000.0, channel_idx=0, window_samples=(0, 4))
     result = op_sigmoid(inp, _CTX)
     assert isinstance(result, RTTrace)
@@ -95,7 +95,7 @@ def test_sigmoid():
 
 
 def test_rt_thresh():
-    from casi.engine.ops.detection import op_rt_thresh
+    from iris.engine.ops.detection import op_rt_thresh
     inp = RTTrace(
         data=np.array([0.1, 0.2, 0.9, 0.3, 0.1, 0.8, 0.2]),
         fs_hz=20000.0, channel_idx=0, window_samples=(0, 7),
@@ -107,14 +107,14 @@ def test_rt_thresh():
 # -- Analysis ops --
 
 def test_spike_pca():
-    from casi.engine.ops.analysis import op_spike_pca
+    from iris.engine.ops.analysis import op_spike_pca
     st = _make_spike_train()
     result = op_spike_pca(st, _CTX, snippet_ms=1.5, n_components=3, outlier_std=2.5)
     assert isinstance(result, SpikePCA)
 
 
 def test_baseline_correction():
-    from casi.engine.ops.analysis import op_baseline_correction
+    from iris.engine.ops.analysis import op_baseline_correction
     ca_data, ca_frames = synth_calcium_trace()
     inp = CATrace(
         data=ca_data, fs_hz=20000.0, trace_idx=0,
@@ -129,10 +129,10 @@ def test_baseline_correction():
 # -- Simulation ops --
 
 def test_gcamp_sim_single():
-    from casi.engine.ops.simulation import op_gcamp_sim
+    from iris.engine.ops.simulation import op_gcamp_sim
     st = _make_spike_train()
     result = op_gcamp_sim(st, _CTX, half_rise_ms=80.0, half_decay_ms=500.0, duration_ms=2500.0, peak_dff=0.20)
-    from casi.engine.types import SimCalcium
+    from iris.engine.types import SimCalcium
     assert isinstance(result, SimCalcium)
     assert result.label == "gcamp_sim"
 
@@ -140,20 +140,20 @@ def test_gcamp_sim_single():
 # -- Spectral ops --
 
 def test_spectrogram():
-    from casi.engine.ops.spectral import op_spectrogram
+    from iris.engine.ops.spectral import op_spectrogram
     inp = _make_mea_trace()
     result = op_spectrogram(inp, _CTX, nperseg=256)
-    from casi.engine.types import Spectrogram
+    from iris.engine.types import Spectrogram
     assert isinstance(result, Spectrogram)
     assert result.frequencies.ndim == 1
     assert result.power.ndim == 2
 
 
 def test_freq_traces():
-    from casi.engine.ops.spectral import op_freq_traces
+    from iris.engine.ops.spectral import op_freq_traces
     inp = _make_mea_trace()
     result = op_freq_traces(inp, _CTX, freqs_hz=[60, 300], broadband_range_hz=[300, 3000])
-    from casi.engine.types import FreqPowerTraces
+    from iris.engine.types import FreqPowerTraces
     assert isinstance(result, FreqPowerTraces)
     assert 60.0 in result.freq_traces or any(abs(k - 60) < 1 for k in result.freq_traces)
 
@@ -161,7 +161,7 @@ def test_freq_traces():
 # -- Saturation ops --
 
 def test_saturation_mask_fill_nan():
-    from casi.engine.ops.saturation import op_saturation_mask
+    from iris.engine.ops.saturation import op_saturation_mask
     # Create trace with a saturated segment (constant values)
     data = np.random.randn(1000)
     data[100:150] = 42.0  # flat segment = saturation

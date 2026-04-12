@@ -1,4 +1,4 @@
-"""Smoke tests for the `casi` CLI."""
+"""Smoke tests for the `iris` CLI."""
 from __future__ import annotations
 
 import io
@@ -7,7 +7,7 @@ from contextlib import redirect_stdout
 
 import pytest
 
-from casi.cli import main
+from iris.cli import main
 
 
 def test_cli_help_prints_usage():
@@ -16,7 +16,7 @@ def test_cli_help_prints_usage():
         with pytest.raises(SystemExit) as exc:
             main(["--help"])
     assert exc.value.code == 0
-    assert "casi" in buf.getvalue()
+    assert "iris" in buf.getvalue()
     assert "config" in buf.getvalue()
     assert "run" in buf.getvalue()
 
@@ -27,7 +27,7 @@ def test_cli_version():
         with pytest.raises(SystemExit) as exc:
             main(["--version"])
     assert exc.value.code == 0
-    assert "casi" in buf.getvalue().lower()
+    assert "iris" in buf.getvalue().lower()
 
 
 def test_cli_config_show(tmp_configs_dir):
@@ -36,7 +36,7 @@ def test_cli_config_show(tmp_configs_dir):
         rc = main(["--config-dir", str(tmp_configs_dir), "config", "show"])
     assert rc == 0
     out = buf.getvalue()
-    assert "CASI configuration" in out
+    assert "IRIS configuration" in out
     assert "butter_bandpass" in out
 
 
@@ -71,7 +71,7 @@ def test_cli_ops_list(tmp_configs_dir):
         "rt_detect", "sigmoid", "rt_thresh", "gcamp_sim", "x_corr",
         "spectrogram", "freq_traces", "amp_gain_correction", "saturation_survey",
     ):
-        assert op in out, f"missing op {op} in `casi ops list` output"
+        assert op in out, f"missing op {op} in `iris ops list` output"
 
 
 def test_cli_session_new_and_list(tmp_configs_dir, tmp_path, monkeypatch):

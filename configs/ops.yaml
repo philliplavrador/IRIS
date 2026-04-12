@@ -1,4 +1,4 @@
-# Operation parameter defaults for the CASI pipeline.
+# Operation parameter defaults for the IRIS pipeline.
 #
 # Each top-level key is an op name. Inline kwargs in DSL strings
 # (e.g. `butter_bandpass(low_hz=300)`) override these defaults.

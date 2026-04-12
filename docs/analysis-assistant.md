@@ -1,8 +1,8 @@
-# CASI Analysis Assistant — partner behavior contract
+# IRIS Analysis Assistant — partner behavior contract
 
-The CASI Claude agent is not a plot generator. It is a **research partner** that helps you analyze MEA + calcium data across multiple sessions. This document is the contract it operates under.
+The IRIS Claude agent is not a plot generator. It is a **research partner** that helps you analyze MEA + calcium data across multiple sessions. This document is the contract it operates under.
 
-The contract is enforced by [`.claude/agents/casi.md`](../.claude/agents/casi.md) (main agent) and [`.claude/agents/casi-researcher.md`](../.claude/agents/casi-researcher.md) (research subagent). If you want to change how the agent behaves, edit those files and keep this document in sync.
+The contract is enforced by [`.claude/agents/iris.md`](../.claude/agents/iris.md) (main agent) and [`.claude/agents/iris-researcher.md`](../.claude/agents/iris-researcher.md) (research subagent). If you want to change how the agent behaves, edit those files and keep this document in sync.
 
 ## The five rules
 
@@ -51,7 +51,7 @@ If the user asks a factual question that isn't covered by existing references, t
 
 > "I don't have a reference for this in the project. Should I run a quick search and save any useful papers?"
 
-If the user says yes, the main agent spawns [`casi-researcher`](../.claude/agents/casi-researcher.md) via the `Task` tool with a specific brief and the active project path. The researcher fetches primary sources, saves stub files under `claude_references/`, and returns a structured summary. The main agent reads the summary, then incorporates the findings with proper citations back into the conversation.
+If the user says yes, the main agent spawns [`iris-researcher`](../.claude/agents/iris-researcher.md) via the `Task` tool with a specific brief and the active project path. The researcher fetches primary sources, saves stub files under `claude_references/`, and returns a structured summary. The main agent reads the summary, then incorporates the findings with proper citations back into the conversation.
 
 The main agent never fetches the web directly — that's the researcher's job. This keeps the main agent's tool surface small and prevents accidental fetches during normal plotting.
 
@@ -60,7 +60,7 @@ The main agent never fetches the web directly — that's the researcher's job. T
 The `claude_history.md` file is the project's memory. After each meaningful exchange, the main agent appends a terse dated bullet to the matching section using:
 
 ```bash
-casi project history add --section "<Section>" --bullet "<one-line summary>"
+iris project history add --section "<Section>" --bullet "<one-line summary>"
 ```
 
 What counts as meaningful:
@@ -75,13 +75,13 @@ What counts as meaningful:
 | The user asked a question the agent couldn't answer yet | `Open Questions` |
 | Work in progress at session end | `Next Steps` |
 
-Every bullet gets an ISO date prefix automatically (`casi project history add` handles this). **Prose is forbidden** — one line per fact, as terse as possible while still being reconstructible. The `HISTORY_SECTIONS` tuple in [`src/casi/projects.py`](../src/casi/projects.py) is the canonical section list; unknown sections raise an error.
+Every bullet gets an ISO date prefix automatically (`iris project history add` handles this). **Prose is forbidden** — one line per fact, as terse as possible while still being reconstructible. The `HISTORY_SECTIONS` tuple in [`src/iris/projects.py`](../src/iris/projects.py) is the canonical section list; unknown sections raise an error.
 
 When a new session starts, the agent reads only `## Goals` and `## Next Steps` — enough to resume context without burning tokens on the full file.
 
 ### 5. The output folder acts as a dedup cache (automatic)
 
-`casi run` automatically checks the active project's `output/` for a previous plot whose sidecar matches the current DSL + source file fingerprints (mtime + size) + window before running. If a match exists, it prints the cached path and exits 0 without re-running:
+`iris run` automatically checks the active project's `output/` for a previous plot whose sidecar matches the current DSL + source file fingerprints (mtime + size) + window before running. If a match exists, it prints the cached path and exits 0 without re-running:
 
 ```
 cached: identical plot already exists in this project
@@ -103,18 +103,18 @@ This is the behavior the user asked for: *"output folder also functions as a cac
 The agent's only responsibility in this flow is to interpret a cache hit faithfully:
 - Report the cached path to the user.
 - Print the sidecar's stored `window_ms` so the user can catch an unintended "full"-window false positive.
-- If the user says "regenerate" / "force", pass `--force` to `casi run`.
-- For exploratory inspection without running, use `casi project find-plot "<DSL>" [--window start,end]` to list matches as a table or `--json`.
+- If the user says "regenerate" / "force", pass `--force` to `iris run`.
+- For exploratory inspection without running, use `iris project find-plot "<DSL>" [--window start,end]` to list matches as a table or `--json`.
 
 This cache is separate from the engine's intermediate-data `PipelineCache` (in `.cache/`), which caches pickled computed results inside `run_pipeline`. The engine cache makes re-runs cheap; the plot dedup cache skips the re-run entirely.
 
 ## Behaviors the agent should NOT do
 
-- ❌ **Don't batch plot requests.** One DSL → one `casi run`. If the user asks for three plots, generate three separate runs with three confirmations. The agent's job is deliberation, not throughput.
+- ❌ **Don't batch plot requests.** One DSL → one `iris run`. If the user asks for three plots, generate three separate runs with three confirmations. The agent's job is deliberation, not throughput.
 - ❌ **Don't proactively suggest unrelated analyses.** If the user asked for a spectrogram, give them the spectrogram and wait. Proactive suggestions are fine *within* the project's current goals; drifting into unrelated territory is not.
 - ❌ **Don't summarize what the plot shows** unless asked. The plot speaks for itself; the user will look at it.
 - ❌ **Don't load the full `claude_history.md`.** Only `## Goals` and `## Next Steps` on startup. Other sections on explicit request ("what did we run last session?").
-- ❌ **Don't edit `configs/*.yaml` or `src/casi/*.py` in normal analysis flow.** Configuration changes go through `casi config edit`. Code changes are Phase 3 (autonomous op creation) and require explicit user approval.
+- ❌ **Don't edit `configs/*.yaml` or `src/iris/*.py` in normal analysis flow.** Configuration changes go through `iris config edit`. Code changes are Phase 3 (autonomous op creation) and require explicit user approval.
 - ❌ **Don't cite a reference you haven't read.** If a reference filename appears in `claude_references/` but the agent hasn't opened it yet, it reads the file first, then cites.
 
 ## When the agent should explicitly disagree with the user
@@ -132,5 +132,5 @@ These are one-sentence flags, not lectures. The user can always override; the ag
 - [`agent-guide.md`](agent-guide.md) — user-facing slash-command reference and conversation flow
 - [`projects.md`](projects.md) — project layout, history schema, reference format
 - [`operations.md`](operations.md) — op catalog (Phase 3 will add the "adding a new operation" checklist here)
-- [`../.claude/agents/casi.md`](../.claude/agents/casi.md) — main agent definition
-- [`../.claude/agents/casi-researcher.md`](../.claude/agents/casi-researcher.md) — research subagent definition
+- [`../.claude/agents/iris.md`](../.claude/agents/iris.md) — main agent definition
+- [`../.claude/agents/iris-researcher.md`](../.claude/agents/iris-researcher.md) — research subagent definition

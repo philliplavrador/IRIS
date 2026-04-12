@@ -1,4 +1,4 @@
-# CASI projects
+# IRIS projects
 
 A **project** is a durable analysis workspace. Each project bundles references, per-project config, cached outputs, a living report, and a structured Claude history file. Projects are gitignored except for a committed `TEMPLATE/` skeleton and this documentation.
 
@@ -11,7 +11,7 @@ projects/
 ├── README.md                   (committed; user-facing explainer)
 ├── CLAUDE.md                   (committed; agent navigation gateway)
 ├── .gitignore                  (committed; ignores everything except TEMPLATE + README)
-├── TEMPLATE/                   (committed scaffold; copied on `casi project new`)
+├── TEMPLATE/                   (committed scaffold; copied on `iris project new`)
 │   ├── CLAUDE.md
 │   ├── claude_config.yaml
 │   ├── claude_history.md
@@ -22,7 +22,7 @@ projects/
 │   │   └── .gitkeep
 │   └── output/
 │       └── .gitkeep
-└── <your-project>/             (gitignored; created via `casi project new`)
+└── <your-project>/             (gitignored; created via `iris project new`)
     ├── CLAUDE.md               (same contents as TEMPLATE's)
     ├── claude_config.yaml      (filled with name / description / created_at)
     ├── claude_history.md       (structured memory; see schema below)
@@ -37,28 +37,28 @@ projects/
     └── .cache/                 (project-scoped PipelineCache; sibling of output/)
 ```
 
-The active project is tracked in `.casi/active_project` (one-line file containing the project name) at the repo root. This file is gitignored so every checkout starts with no active project until the user opens one.
+The active project is tracked in `.iris/active_project` (one-line file containing the project name) at the repo root. This file is gitignored so every checkout starts with no active project until the user opens one.
 
 ## Lifecycle
 
 ```bash
 # Create + activate a new project
-casi project new kinetics-study --description "jGCaMP8m decay analysis" --open
+iris project new kinetics-study --description "jGCaMP8m decay analysis" --open
 
 # Plot something — lands in projects/kinetics-study/output/
-casi run "mea_trace(861).butter_bandpass.spectrogram" --window full
+iris run "mea_trace(861).butter_bandpass.spectrogram" --window full
 
 # Switch projects
-casi project open other-study
+iris project open other-study
 
 # See all projects; the active one is marked with *
-casi project list
+iris project list
 
 # Inspect a project's metadata
-casi project info kinetics-study
+iris project info kinetics-study
 
 # Deactivate the current project (a project must be opened before the next run)
-casi project close
+iris project close
 ```
 
 ## Per-project configuration
@@ -127,7 +127,7 @@ _Last updated: 2026-04-10T14:45:00Z_
 - **ISO dates first** make recency queries a simple sort.
 - **Markdown renders inline** in `report.md` references and is safe to hand-edit.
 
-The seven sections are defined in `HISTORY_SECTIONS` in [`src/casi/projects.py`](../src/casi/projects.py) and enforced by `append_history()` (raises `ValueError` on unknown sections). Do not invent new top-level sections.
+The seven sections are defined in `HISTORY_SECTIONS` in [`src/iris/projects.py`](../src/iris/projects.py) and enforced by `append_history()` (raises `ValueError` on unknown sections). Do not invent new top-level sections.
 
 ## References
 
@@ -144,19 +144,19 @@ Via the CLI (the agent uses these same commands):
 
 ```bash
 # A web source — stub lands in claude_references/
-casi project reference add "https://doi.org/10.1371/journal.pone.0312438" \
+iris project reference add "https://doi.org/10.1371/journal.pone.0312438" \
     --source web \
     --title "van der Molen et al. (2024) RT-Sort" \
     --summary "Real-time spike sorting CNN for MaxWell MEAs; reports sub-ms latency." \
     --tag rt-sort --tag spike-sorting
 
 # A user-placed file (the file itself must already be in user_references/)
-casi project reference add "zhang-2023.pdf" \
+iris project reference add "zhang-2023.pdf" \
     --source user \
     --summary "Primary paper on jGCaMP8 kinetics"
 
 # A training-data claim (agent flags it as unverified)
-casi project reference add "biexponential-decay-fit" \
+iris project reference add "biexponential-decay-fit" \
     --source claude \
     --summary "Biexponential fits are conventional for GCaMP variants." \
     --tag kinetics
@@ -192,26 +192,26 @@ The analysis agent is required to cite references for any analytic claim it make
 ### Listing and inspecting
 
 ```bash
-casi project reference list                        # tabular
-casi project reference list --json                  # machine-readable
-casi project reference show "van der Molen"       # substring match on title
-casi project reference show claude_references/van-der-molen-2024.md
+iris project reference list                        # tabular
+iris project reference list --json                  # machine-readable
+iris project reference show "van der Molen"       # substring match on title
+iris project reference show claude_references/van-der-molen-2024.md
 ```
 
 ## Cache semantics
 
-CASI has **two** caches per project, working together:
+IRIS has **two** caches per project, working together:
 
 ### Intermediate data cache — `projects/<name>/.cache/`
 
-This is the existing two-tier `PipelineCache` from [`src/casi/engine.py`](../src/casi/engine.py), now scoped per-project. Cache keys are content-addressed (DSL + param values + input file mtimes), so moving the cache directory simply creates a fresh cache for the new project the first time. It caches *pickled intermediate computed results* (e.g. a filtered trace, a spectrogram matrix) so repeat runs don't re-compute.
+This is the existing two-tier `PipelineCache` from [`src/iris/engine.py`](../src/iris/engine.py), now scoped per-project. Cache keys are content-addressed (DSL + param values + input file mtimes), so moving the cache directory simply creates a fresh cache for the new project the first time. It caches *pickled intermediate computed results* (e.g. a filtered trace, a spectrogram matrix) so repeat runs don't re-compute.
 
 ### Plot dedup cache — `projects/<name>/output/`
 
-The output folder itself doubles as a dedup cache: `casi run` checks for an existing sidecar JSON matching the current DSL + source fingerprints + window *before* creating a new session, and short-circuits with the cached path if found. You'll see:
+The output folder itself doubles as a dedup cache: `iris run` checks for an existing sidecar JSON matching the current DSL + source fingerprints + window *before* creating a new session, and short-circuits with the cached path if found. You'll see:
 
 ```
-$ casi run "mea_trace(861).butter_bandpass.spectrogram" --window 14487.05,44352.95
+$ iris run "mea_trace(861).butter_bandpass.spectrogram" --window 14487.05,44352.95
 project: my-analysis
 cached: identical plot already exists in this project
   plot:    projects/my-analysis/output/2026-04-10_session_001_test-b/plot_001_mea_trace_861_butter_bandpass_spectrogram_0.png
@@ -229,14 +229,14 @@ pass --force to re-run and create a new version.
 - **Window** — literal `[start, end]` equality, OR permissive "same sources" match when the query window is `"full"` or missing (same data → same full duration)
 
 **Bypassing the cache:**
-- `casi run --force "<DSL>"` — always run, never check
+- `iris run --force "<DSL>"` — always run, never check
 - Editing the input data file invalidates matching sidecars automatically (mtime change)
 
 **Explicit inspection:**
 ```bash
-casi project find-plot "mea_trace(861).spectrogram" --window 14487.05,44352.95
-casi project find-plot "mea_trace(861).spectrogram" --json   # machine-readable
-casi project find-plot "mea_trace(861).spectrogram" --project my-analysis  # non-active project
+iris project find-plot "mea_trace(861).spectrogram" --window 14487.05,44352.95
+iris project find-plot "mea_trace(861).spectrogram" --json   # machine-readable
+iris project find-plot "mea_trace(861).spectrogram" --project my-analysis  # non-active project
 ```
 
 ### Together
@@ -261,7 +261,7 @@ Phase 2 formalizes this into an explicit agent workflow with citation gates.
 
 ## See also
 
-- [`../src/casi/projects.py`](../src/casi/projects.py) — project lifecycle API
+- [`../src/iris/projects.py`](../src/iris/projects.py) — project lifecycle API
 - [`../projects/CLAUDE.md`](../projects/CLAUDE.md) — agent nav gateway
 - [`../projects/README.md`](../projects/README.md) — user-facing quick reference
 - [`operations.md`](operations.md) — op catalog (and, in Phase 3, the "adding a new operation" checklist)

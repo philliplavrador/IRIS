@@ -1,13 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(casi:*)",
+      "Bash(iris:*)",
       "Bash(uv run:*)",
       "Bash(python scripts/*:*)",
       "Bash(pip show:*)",
       "Bash(pip list:*)",
       "Bash(ls:*)",
-      "Bash(cat .casi/*:*)"
+      "Bash(cat .iris/*:*)"
     ],
     "deny": [],
     "ask": []

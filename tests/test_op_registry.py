@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from casi.engine import (
+from iris.engine import (
     CATrace,
     FreqPowerTraces,
     MEABank,

@@ -1,4 +1,4 @@
-# File paths for the CASI pipeline.
+# File paths for the IRIS pipeline.
 #
 # Paths can be:
 #   - absolute (e.g. /data/recordings/MEA_B.raw.h5)

@@ -1,6 +1,6 @@
 # configs/ — config navigation
 
-Three YAML files drive CASI runs. Loaded by both the CLI and the Python daemon via `casi.config.load_configs()`.
+Three YAML files drive IRIS runs. Loaded by both the CLI and the Python daemon via `iris.config.load_configs()`.
 
 ## Files
 
@@ -12,7 +12,7 @@ Three YAML files drive CASI runs. Loaded by both the CLI and the Python daemon v
 
 ## How project overrides compose
 
-When a project is active, `casi.config.apply_project_overrides` rewrites the global config in memory:
+When a project is active, `iris.config.apply_project_overrides` rewrites the global config in memory:
 
 1. `paths["output_dir"]` → `projects/<name>/output`
 2. `paths["cache_dir"]` → `projects/<name>/.cache`
@@ -22,9 +22,9 @@ The global `configs/` files are never mutated by this; the override is in-memory
 
 ## Rules
 
-- **Never** edit these files directly from the agent. Use `casi config edit <file> <key> <value>`.
-- **Never** add new required keys without updating `_REQUIRED_PATH_KEYS` in [../src/casi/config.py](../src/casi/config.py).
+- **Never** edit these files directly from the agent. Use `iris config edit <file> <key> <value>`.
+- **Never** add new required keys without updating `_REQUIRED_PATH_KEYS` in [../src/iris/config.py](../src/iris/config.py).
 
 ## See also
 - [../CLAUDE.md](../CLAUDE.md) — repo root nav
-- [../src/casi/config.py](../src/casi/config.py) — loader + override logic
+- [../src/iris/config.py](../src/iris/config.py) — loader + override logic

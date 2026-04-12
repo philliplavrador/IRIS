@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from casi.engine import DSLParser, OpNode, PipelineCache, SourceNode
+from iris.engine import DSLParser, OpNode, PipelineCache, SourceNode
 
 
 def test_make_key_stable_for_same_inputs(tmp_path):

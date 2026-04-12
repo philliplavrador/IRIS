@@ -33,7 +33,7 @@ projects/
 
 ## How agents should interact with a project
 
-1. On startup, read `.casi/active_project` to get the project name.
+1. On startup, read `.iris/active_project` to get the project name.
 2. Read `claude_config.yaml` (always fine to load fully).
 3. Read **only** the `## Goals` and `## Next Steps` sections of `claude_history.md`.
 4. The system prompt builder injects `memory.yaml` content automatically — no need to read it manually.
@@ -48,4 +48,4 @@ projects/
 ## See also
 - [../CLAUDE.md](../CLAUDE.md) — repo root nav
 - [../docs/projects.md](../docs/projects.md) — full project contract
-- [../src/casi/projects.py](../src/casi/projects.py) — lifecycle API
+- [../src/iris/projects.py](../src/iris/projects.py) — lifecycle API

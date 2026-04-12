@@ -1,6 +1,6 @@
-# Getting started with CASI
+# Getting started with IRIS
 
-This walkthrough takes you from a fresh clone to your first plot via the three supported entry points: the Claude Code agent, the `casi` CLI, and the example Jupyter notebook.
+This walkthrough takes you from a fresh clone to your first plot via the three supported entry points: the Claude Code agent, the `iris` CLI, and the example Jupyter notebook.
 
 ## Prerequisites
 
@@ -15,8 +15,8 @@ This walkthrough takes you from a fresh clone to your first plot via the three s
 ## 1. Install
 
 ```bash
-git clone https://github.com/philliplavrador/CASI
-cd CASI
+git clone https://github.com/philliplavrador/IRIS
+cd IRIS
 uv sync                      # core deps only
 ```
 
@@ -35,7 +35,7 @@ pip install --no-deps git+https://github.com/braingeneers/braindance
 
 ## 2. Configure paths
 
-CASI is configured via three YAML files in `configs/`:
+IRIS is configured via three YAML files in `configs/`:
 
 - [`configs/paths.yaml`](../configs/paths.yaml) — file paths to your data, model weights, and output directories
 - [`configs/ops.yaml`](../configs/ops.yaml) — defaults for all 17 operation parameters
@@ -46,14 +46,14 @@ Edit `paths.yaml` to point at your recording. The defaults reference the legacy 
 Verify the configuration loaded correctly:
 
 ```bash
-casi config show
+iris config show
 ```
 
 This prints a summary of all three files and flags any missing input files. If everything is `OK`, you're ready to run.
 
 ## 3. Choose a plot backend
 
-Set `plot_backend` in [`configs/globals.yaml`](../configs/globals.yaml) (or override per-run with `casi run --backend ...`):
+Set `plot_backend` in [`configs/globals.yaml`](../configs/globals.yaml) (or override per-run with `iris run --backend ...`):
 
 | Backend | When to use |
 |---|---|
@@ -68,23 +68,23 @@ Set `plot_backend` in [`configs/globals.yaml`](../configs/globals.yaml) (or over
 
 ```bash
 claude
-> /casi-start
+> /iris-start
 ```
 
 The agent verifies your config, resumes the active project (if any), asks you to confirm, then waits for natural-language plot requests. See [`docs/agent-guide.md`](agent-guide.md) for the full workflow.
 
-### Option B — `casi` CLI
+### Option B — `iris` CLI
 
 ```bash
 # optional: create a durable project workspace for this analysis
-casi project new first-test --description "smoke test" --open
+iris project new first-test --description "smoke test" --open
 
 # run a single DSL expression (lands in the active project's output/ if set)
-casi run "mea_trace(861).butter_bandpass.spectrogram" --window full
+iris run "mea_trace(861).butter_bandpass.spectrogram" --window full
 
 # inspect what got saved
-casi session list
-casi project list
+iris session list
+iris project list
 ```
 
 An active project is required for all runs. Output lives in `projects/<name>/output/<date>_session_NNN[_label]/`. Every saved plot has a `.json` sidecar next to it containing the full DSL, expanded params, and source-file fingerprints.
@@ -95,7 +95,7 @@ An active project is required for all runs. Output lives in `projects/<name>/out
 jupyter notebook examples/pipeline.ipynb
 ```
 
-The notebook loads `configs/` via `casi.config.load_configs`, builds the registry, and runs `casi.engine.run_pipeline`. Edit the `pipeline_cfg` list to add or remove pipeline sections.
+The notebook loads `configs/` via `iris.config.load_configs`, builds the registry, and runs `iris.engine.run_pipeline`. Edit the `pipeline_cfg` list to add or remove pipeline sections.
 
 ## 5. Where outputs go
 
@@ -113,7 +113,7 @@ The sidecar JSON has the structure documented in [`docs/sessions.md`](sessions.m
 
 ## Troubleshooting
 
-**`error: missing input files`** — Run `casi config show` and check the paths flagged `[MISSING]`. Either edit `configs/paths.yaml` (or run `casi config edit paths mea_h5 /your/path.h5`) or move your data to where the config expects it.
+**`error: missing input files`** — Run `iris config show` and check the paths flagged `[MISSING]`. Either edit `configs/paths.yaml` (or run `iris config edit paths mea_h5 /your/path.h5`) or move your data to where the config expects it.
 
 **`ImportError: pyqplot backend requires...`** — You set `plot_backend: pyqplot` but don't have the optional extra installed. Run `uv sync --extra publication` and make sure the `qplot` binary is on your PATH.
 
@@ -121,4 +121,4 @@ The sidecar JSON has the structure documented in [`docs/sessions.md`](sessions.m
 
 **Cache returning stale results after I edited my data file** — That can't actually happen: cache keys include file mtimes. If you suspect cache corruption, delete `cache/` (or pass `disk_cache: false` in `globals.yaml`).
 
-**pyqtgraph window closes immediately when run from a script** — In a non-interactive script, call `casi.plot_backends.pyqtgraph_backend.run_event_loop()` after your pipeline runs. In Jupyter, use `%gui qt`.
+**pyqtgraph window closes immediately when run from a script** — In a non-interactive script, call `iris.plot_backends.pyqtgraph_backend.run_event_loop()` after your pipeline runs. In Jupyter, use `%gui qt`.

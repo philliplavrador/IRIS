@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """Create a TestClient for the daemon app."""
-    from casi.daemon.app import app
+    from iris.daemon.app import app
     return TestClient(app)
 
 

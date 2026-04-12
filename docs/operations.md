@@ -439,7 +439,7 @@ The returned `SaturationReport` contains electrode locations and per-channel sat
 
 # Adding a new operation
 
-This section is the authoritative contract for adding a new op to CASI. Both human contributors and the analysis agent follow it. The op does not ship until all six touch points are present and `scripts/check_op_registered.py <name>` returns `PASS`.
+This section is the authoritative contract for adding a new op to IRIS. Both human contributors and the analysis agent follow it. The op does not ship until all six touch points are present and `scripts/check_op_registered.py <name>` returns `PASS`.
 
 ## When to add a new op
 
@@ -451,11 +451,11 @@ Add a new op only when a repeated ad-hoc DSL pattern or a specific user analysis
 
 ## The autonomous op-creation flow (agent-driven)
 
-When the user asks for an op that isn't in [`casi ops list`](../src/casi/cli.py) and the answer isn't an existing-op composition, the analysis agent runs this flow:
+When the user asks for an op that isn't in [`iris ops list`](../src/iris/cli.py) and the answer isn't an existing-op composition, the analysis agent runs this flow:
 
-1. **Search** — check that the op really doesn't exist. Look at the TOC above and at `casi ops list`. If there's something close with a different name, propose that instead.
+1. **Search** — check that the op really doesn't exist. Look at the TOC above and at `iris ops list`. If there's something close with a different name, propose that instead.
 
-2. **Research** — delegate to `casi-researcher` via the `Task` tool with a specific brief. The researcher saves primary sources under `projects/<active>/claude_references/`. The analysis agent reads every new stub before citing.
+2. **Research** — delegate to `iris-researcher` via the `Task` tool with a specific brief. The researcher saves primary sources under `projects/<active>/claude_references/`. The analysis agent reads every new stub before citing.
 
 3. **Draft a proposal** — fill out [`op-proposal-template.md`](op-proposal-template.md) and save it to `docs/op-proposals/<op_name>.md`. Every section is required. The **cross-check against user goal** section (§6) is the gate — if the agent cannot convincingly explain how the op serves the active project's `## Goals`, it STOPS and surfaces the mismatch:
 
@@ -477,7 +477,7 @@ When the user asks for an op that isn't in [`casi ops list`](../src/casi/cli.py)
 
 Every op must be present in all six places. `scripts/check_op_registered.py` validates all six by regex + YAML parsing without importing the engine, so it works in any environment.
 
-### Touch point 1 — `TYPE_TRANSITIONS` in [`src/casi/engine.py`](../src/casi/engine.py)
+### Touch point 1 — `TYPE_TRANSITIONS` in [`src/iris/engine.py`](../src/iris/engine.py)
 
 Add a row mapping the op name to its `{input_type: output_type}` dict. One entry per valid input type:
 
@@ -490,7 +490,7 @@ TYPE_TRANSITIONS: Dict[str, Dict[DataType, DataType]] = {
 
 For function-ops (sigmoid-style, no type change), use an empty dict: `"sigmoid": {}`.
 
-### Touch point 2 — handler function in [`src/casi/engine.py`](../src/casi/engine.py)
+### Touch point 2 — handler function in [`src/iris/engine.py`](../src/iris/engine.py)
 
 Name the handler `op_<name>` and place it in the OP HANDLERS section near similar ops. Signature pattern:
 
@@ -510,7 +510,7 @@ Keyword arguments (after `*`) must match the parameter names in `configs/ops.yam
 
 ### Touch point 3 — `register_op` call in `create_registry()`
 
-Add a line inside `create_registry()` in [`src/casi/engine.py`](../src/casi/engine.py):
+Add a line inside `create_registry()` in [`src/iris/engine.py`](../src/iris/engine.py):
 
 ```python
 registry.register_op("my_new_op", op_my_new_op)
@@ -581,8 +581,8 @@ Behavioral tests (with synthetic data) are strongly preferred but not enforced b
 ```bash
 python scripts/check_op_registered.py my_new_op
 # PASS: my_new_op
-#   [x] TYPE_TRANSITIONS entry in src/casi/engine.py
-#   [x] handler function `op_my_new_op(...)` in src/casi/engine.py
+#   [x] TYPE_TRANSITIONS entry in src/iris/engine.py
+#   [x] handler function `op_my_new_op(...)` in src/iris/engine.py
 #   [x] register_op("my_new_op", ...) in create_registry()
 #   [x] `my_new_op:` entry in configs/ops.yaml
 #   [x] `## my_new_op` section in docs/operations.md

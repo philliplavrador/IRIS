@@ -3,8 +3,8 @@
 ## Setup
 
 ```bash
-git clone https://github.com/philliplavrador/CASI
-cd CASI
+git clone https://github.com/philliplavrador/IRIS
+cd IRIS
 uv sync --extra dev
 ```
 
@@ -43,7 +43,7 @@ uv run pytest --cov=src --cov-report=term-missing
 
 ## Linting and formatting
 
-CASI uses [`ruff`](https://docs.astral.sh/ruff/) for both linting and formatting.
+IRIS uses [`ruff`](https://docs.astral.sh/ruff/) for both linting and formatting.
 
 ```bash
 uv run ruff check src tests           # lint
@@ -65,7 +65,7 @@ The hooks in `.pre-commit-config.yaml` run `ruff` on every commit, plus a few ba
 ## Code organization
 
 ```
-src/casi/
+src/iris/
 ├── engine.py            DSL parser, AST, executor, two-tier cache, op handlers, source loaders, registry factory
 ├── config.py            YAML config loader + validator
 ├── sessions.py          Session directories + provenance sidecar writer
@@ -84,7 +84,7 @@ src/casi/
 
 - **Minimal in-place edits.** When fixing a bug or adding a feature, don't refactor surrounding code, don't add docstrings/type annotations to unchanged code, don't reformat unrelated lines.
 - **No dict-config syntax in `pipeline_cfg`** — use plain lists of DSL strings (this matters for the example notebooks; configuration of op defaults goes in `configs/ops.yaml`).
-- **DSL strings stay canonical.** The two-tier cache keys on the full DSL chain. The Claude Code agent translates natural language into DSL and runs it via `casi run`; it does not maintain a parallel API for individual ops. This is for both speed (cache hits) and clarity (one source of truth for what was executed).
+- **DSL strings stay canonical.** The two-tier cache keys on the full DSL chain. The Claude Code agent translates natural language into DSL and runs it via `iris run`; it does not maintain a parallel API for individual ops. This is for both speed (cache hits) and clarity (one source of truth for what was executed).
 - **Branch-cut decisions.** When porting matplotlib plots to a new backend, prefer to mirror axis labels, titles, and color schemes verbatim. Only deviate when the underlying primitive doesn't exist (e.g., pyqplot has no native `secondary_yaxis`).
 
 ## Adding a new operation
@@ -100,10 +100,10 @@ src/casi/
 
 ## Adding a new plot backend
 
-1. Create `src/casi/plot_backends/my_backend.py`.
+1. Create `src/iris/plot_backends/my_backend.py`.
 2. Implement one handler per dataclass (mirror the matplotlib backend's signatures).
 3. Implement a `register(registry: OpRegistry)` function that calls `registry.register_plot(...)` for each handler and `registry.register_overlay_plot(plot_overlay)`.
-4. Add a branch to `register_for_backend` in `src/casi/plot_backends/__init__.py`.
+4. Add a branch to `register_for_backend` in `src/iris/plot_backends/__init__.py`.
 5. Add the backend name to `VALID_BACKENDS`.
 6. Document it in the `globals.yaml` comment block.
 
@@ -114,7 +114,7 @@ Earlier in development, the CLAUDE.md at the project root scoped Claude's read/w
 ## Releasing
 
 ```bash
-# bump version in pyproject.toml and src/casi/__init__.py
+# bump version in pyproject.toml and src/iris/__init__.py
 # update CITATION.cff date-released
 git tag -a v0.2.0 -m "v0.2.0"
 git push origin v0.2.0
