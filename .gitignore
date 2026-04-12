@@ -73,5 +73,8 @@ data/
 models/
 
 
+# Node
+node_modules/
+
 # Misc
 nul
