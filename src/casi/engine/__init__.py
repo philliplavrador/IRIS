@@ -1,32 +1,49 @@
 """
 CASI engine package.
 
-This package wraps the original engine module (now engine_monolith.py)
-and provides the same public API. New code should import types from
-engine.types and engine.type_system; the monolith re-exports are for
-backward compatibility.
-
-The full split (moving ops, parser, cache, executor out of the monolith)
-is tracked in the refactor plan and will proceed incrementally.
+Public API re-exported from submodules. All callers (CLI, daemon, tests,
+plot backends) should import from ``casi.engine`` — never from the
+individual submodules directly (those are implementation details).
 """
-# Re-export everything from the monolith
-from casi.engine_monolith import *  # noqa: F401, F403
-from casi.engine_monolith import (  # noqa: F401 — explicit re-exports for type checkers
+# Types
+from casi.engine.types import (  # noqa: F401
     PipelineContext,
     MEATrace, MEABank, CATrace, RTTrace, RTBank,
     SpikeTrain, SimCalcium, SimCalciumBank,
     CorrelationResult, SpikePCA, Spectrogram,
     FreqPowerTraces, SaturationReport,
     _SpikeBankIntermediate,
+)
+
+# Type system
+from casi.engine.type_system import (  # noqa: F401
     DataType, TYPE_TRANSITIONS, DIRECT_BANK_OPS,
-    OpRegistry,
+)
+
+# Registry
+from casi.engine.registry import OpRegistry  # noqa: F401
+
+# AST
+from casi.engine.ast import (  # noqa: F401
     SourceNode, OpNode, ExprNode, WindowDirective, OverlayGroup,
-    DSLParser,
-    PipelineCache,
-    PipelineExecutor,
-    run_pipeline,
+    PipelineItem,
+)
+
+# Parser
+from casi.engine.parser import DSLParser  # noqa: F401
+
+# Cache
+from casi.engine.cache import PipelineCache  # noqa: F401
+
+# Executor
+from casi.engine.executor import PipelineExecutor, run_pipeline  # noqa: F401
+
+# Loaders
+from casi.engine.loaders import (  # noqa: F401
     load_mea_trace, load_ca_trace, load_rtsort,
     get_recording_duration_ms,
     clear_data_caches, clear_pipeline_cache,
-    create_registry,
 )
+
+# Factory
+from casi.engine.factory import create_registry  # noqa: F401
