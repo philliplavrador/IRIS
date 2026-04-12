@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  casi:
+    build: .
+    ports:
+      - "3001:3001"
+    volumes:
+      - casi-data:/app/projects
+    environment:
+      - CASI_ROOT=/app
+      - NODE_ENV=production
+      - CASI_DAEMON_PORT=3002
+    restart: unless-stopped
+
+volumes:
+  casi-data:
+    driver: local

@@ -1,0 +1,9 @@
+# Ignore all project contents by default.
+*
+
+# But keep the committed scaffolding.
+!.gitignore
+!README.md
+!CLAUDE.md
+!TEMPLATE/
+!TEMPLATE/**

@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "scripts": {
+    "app": "npm run dev --prefix casi-app",
+    "app:build": "npm run build --prefix casi-app"
+  }
+}

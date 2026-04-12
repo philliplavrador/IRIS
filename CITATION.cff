@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use CASI in your research, please cite it as below."
+title: "CASI: Calcium-Assisted Spike Identity"
+abstract: >
+  CASI is a configurable pipeline for constructing optically-grounded
+  ground-truth datasets for spike sorting. It links calcium imaging
+  ROIs to extracellular units recorded on multi-electrode arrays via
+  cross-correlation, statistical shuffle alignment, and PCA waveform
+  curation, producing tiered-confidence identity labels suitable for
+  benchmarking spike sorting algorithms.
+type: software
+version: 0.1.0
+date-released: 2026-04-10
+license: BSD-3-Clause
+repository-code: "https://github.com/philliplavrador/CASI"
+url: "https://github.com/philliplavrador/CASI"
+authors:
+  - family-names: Lavrador
+    given-names: Phillip
+    email: philliplavrador@ucsb.edu
+    affiliation: "Kosik Lab, University of California, Santa Barbara"
+keywords:
+  - neuroscience
+  - electrophysiology
+  - calcium-imaging
+  - spike-sorting
+  - multi-electrode-array
+  - ground-truth
+  - benchmark
+preferred-citation:
+  type: software
+  title: "CASI: Calcium-Assisted Spike Identity"
+  version: 0.1.0
+  year: 2026
+  authors:
+    - family-names: Lavrador
+      given-names: Phillip
+      affiliation: "Kosik Lab, University of California, Santa Barbara"
+  url: "https://github.com/philliplavrador/CASI"

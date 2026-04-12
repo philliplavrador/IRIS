@@ -1,0 +1,94 @@
+[project]
+name = "casi"
+version = "0.1.0"
+description = "CASI: Calcium-Assisted Spike Identity. Construction of optically-grounded ground-truth datasets for spike sorting benchmarks via simultaneous calcium imaging and multi-electrode array recording."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Phillip Lavrador", email = "philliplavrador@ucsb.edu" },
+]
+maintainers = [
+    { name = "Phillip Lavrador", email = "philliplavrador@ucsb.edu" },
+]
+keywords = [
+    "neuroscience",
+    "electrophysiology",
+    "calcium-imaging",
+    "spike-sorting",
+    "multi-electrode-array",
+    "ground-truth",
+    "benchmark",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+    "ipympl>=0.9",
+    "torch>=2.0",
+    "spikeinterface>=0.100",
+    "h5py>=3.8",
+    "tqdm>=4.60",
+    "pyyaml>=6.0",
+    "pyqtgraph>=0.13",
+    "PyQt6>=6.5",
+]
+
+[project.optional-dependencies]
+publication = [
+    # also requires the C++ qplot binary on PATH:
+    # https://github.com/wagenadl/qplot/releases
+    "pyqplot>=0.5",
+]
+daemon = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+]
+dev = [
+    "pytest>=8",
+    "pytest-cov",
+    "ruff>=0.5",
+    "pre-commit",
+]
+
+[project.scripts]
+casi = "casi.cli:main"
+casi-daemon = "casi.daemon.app:run"
+
+[project.urls]
+Homepage      = "https://github.com/philliplavrador/CASI"
+Repository    = "https://github.com/philliplavrador/CASI"
+Documentation = "https://github.com/philliplavrador/CASI/tree/main/docs"
+Issues        = "https://github.com/philliplavrador/CASI/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/casi"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["docs/development"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q --strict-markers"

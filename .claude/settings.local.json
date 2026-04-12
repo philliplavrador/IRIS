@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(casi:*)",
+      "Bash(uv run:*)",
+      "Bash(python scripts/*:*)",
+      "Bash(pip show:*)",
+      "Bash(pip list:*)",
+      "Bash(ls:*)",
+      "Bash(cat .casi/*:*)"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": false,
+    "pyright-lsp@claude-plugins-official": true
+  }
+}

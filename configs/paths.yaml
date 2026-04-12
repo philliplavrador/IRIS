@@ -1,0 +1,27 @@
+# File paths for the CASI pipeline.
+#
+# Paths can be:
+#   - absolute (e.g. /data/recordings/MEA_B.raw.h5)
+#   - relative to the project root (e.g. legacy/data/alignment-data/Test-B/MEA_B.raw.h5)
+#   - using ~ for home (e.g. ~/recordings/MEA_B.raw.h5)
+#   - using ${ENV_VAR} for environment variables
+#
+# Forward slashes work on every OS including Windows.
+
+# --- Input data ---
+
+mea_h5: legacy/data/alignment-data/Test-B/MEA_B.raw.h5
+ca_traces_npz: legacy/data/alignment-data/Test-B/CA_traces_B.npz
+rt_model_outputs_npy: legacy/data/alignment-data/Test-B/sequences/model_outputs.npy
+
+# --- Model weights ---
+
+rt_model_path: legacy/models/rtsort_model
+
+# --- Output directories ---
+
+# Where session output dirs are created (one per analysis run).
+output_dir: outputs
+
+# Where the two-tier prefix cache stores pickled intermediate results.
+cache_dir: cache

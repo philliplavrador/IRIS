@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python d:/Projects/CASI/scripts/hook_ruff_format.py",
+            "timeout": 30,
+            "statusMessage": "Running ruff..."
+          }
+        ]
+      }
+    ]
+  }
+}
