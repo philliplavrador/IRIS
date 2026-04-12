@@ -5,8 +5,8 @@ type BroadcastFn = (type: string, data: unknown) => void
 
 export function registerAgentRoutes(app: Express, broadcast: BroadcastFn): void {
   app.post('/api/agent/send', (req, res) => {
-    const { prompt } = req.body
-    sendMessage(prompt, broadcast).catch((err) => console.error('Agent error:', err))
+    const { prompt, projectName } = req.body
+    sendMessage(prompt, broadcast, projectName).catch((err) => console.error('Agent error:', err))
     res.json({ ok: true })
   })
 
