@@ -41,16 +41,9 @@ dependencies = [
     "h5py>=3.8",
     "tqdm>=4.60",
     "pyyaml>=6.0",
-    "pyqtgraph>=0.13",
-    "PyQt6>=6.5",
 ]
 
 [project.optional-dependencies]
-publication = [
-    # also requires the C++ qplot binary on PATH:
-    # https://github.com/wagenadl/qplot/releases
-    "pyqplot>=0.5",
-]
 daemon = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",

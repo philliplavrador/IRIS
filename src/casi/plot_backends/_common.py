@@ -101,28 +101,3 @@ def _window_suffix(window_samples: Tuple[int, int], fs: float) -> str:
     start, end = window_samples
     s_ms, e_ms = start / fs * 1000, end / fs * 1000
     return f" [{s_ms:.1f} - {e_ms:.1f} ms]"
-
-
-def params_text_block(ctx: PipelineContext) -> str:
-    """Plain-text version of the params panel for non-matplotlib backends.
-
-    Used by pyqtgraph (overlay) and pyqplot (sidecar / footer text).
-    """
-    if not ctx.show_ops_params or not ctx.current_expr:
-        return ""
-
-    expr = ctx.current_expr
-    lines = [
-        f"Source: {expr.source.source_type}({expr.source.source_id})",
-        f"Window: [{ctx.window_ms[0]:.2f}, {ctx.window_ms[1]:.2f}] ms",
-        "Operations:",
-    ]
-    if not expr.ops:
-        lines.append("  (none)")
-    else:
-        for i, op_node in enumerate(expr.ops, 1):
-            merged = {**ctx.ops_cfg.get(op_node.op_name, {}), **op_node.kwargs_overrides}
-            lines.append(f"  {i}. {op_node.op_name}")
-            for key, value in merged.items():
-                lines.append(f"      {key} = {value!r}")
-    return "\n".join(lines)
