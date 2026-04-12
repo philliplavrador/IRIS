@@ -10,9 +10,11 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 if (!process.env.CLAUDE_CODE_GIT_BASH_PATH) {
-  // Try `which bash` first (works when git is on PATH)
+  // Try to locate bash via PATH (use `where` on Windows, `which` elsewhere)
+  const locateCmd = process.platform === 'win32' ? 'where bash' : 'which bash'
   try {
-    const bashPath = execSync('which bash', { encoding: 'utf-8' }).trim()
+    const bashPath = execSync(locateCmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] })
+      .split(/\r?\n/)[0].trim()
     if (bashPath) process.env.CLAUDE_CODE_GIT_BASH_PATH = bashPath
   } catch {}
 
