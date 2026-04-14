@@ -394,7 +394,7 @@ Skip — folded into 1.5 and 1.6.
 
 ---
 
-### [ ] Task 1.9 — Daemon project routes
+### [x] Task 1.9 — Daemon project routes
 
 **Phase**: 1 · **Effort**: S · **Blocks**: 1.10
 

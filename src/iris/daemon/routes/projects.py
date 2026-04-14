@@ -1,13 +1,35 @@
-"""Project CRUD routes for the IRIS daemon."""
+"""Project lifecycle routes for the IRIS daemon.
+
+Canonical endpoint shape (REVAMP Task 1.9):
+
+- ``GET  /projects``              — list all projects.
+- ``POST /projects``              — create (body ``{"name": "...", ...}``).
+- ``GET  /projects/active``       — return the active project (or ``null``).
+- ``POST /projects/active``       — set the active project (body ``{"name": "..."}``).
+- ``GET  /projects/{name}``       — open/activate and return metadata.
+- ``DELETE /projects/{name}``     — delete a project workspace.
+
+Supporting endpoints kept in place until later REVAMP tasks replace their
+callers:
+
+- ``GET  /projects/find-plot``    — plot dedup lookup (engine/pipeline flow).
+- ``POST /projects/rename``       — rename (retained for CLI/frontend parity).
+
+All handlers delegate to the rebuilt :mod:`iris.projects` package; nothing
+here owns domain logic.
+"""
 
 from __future__ import annotations
+
+from dataclasses import asdict
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from iris.daemon.app import get_iris_root
-
 router = APIRouter(tags=["projects"])
+
+
+# -- request bodies ---------------------------------------------------------
 
 
 class CreateProjectRequest(BaseModel):
@@ -15,114 +37,88 @@ class CreateProjectRequest(BaseModel):
     description: str | None = None
 
 
+class SetActiveRequest(BaseModel):
+    name: str
+
+
 class RenameProjectRequest(BaseModel):
     old_name: str
     new_name: str
 
 
+# -- helpers ----------------------------------------------------------------
+
+
+def _project_info_dict(name: str) -> dict:
+    """Return the describe-project payload for ``name``.
+
+    Raises ``HTTPException(404)`` if the project does not exist.
+    """
+    from iris.projects import _describe_project, get_project_config, project_root
+
+    path = project_root() / name
+    if not path.is_dir():
+        raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
+    info = asdict(_describe_project(path))
+    cfg = get_project_config(name)
+    if cfg.get("agent_notes"):
+        info["agent_notes"] = cfg["agent_notes"]
+    return info
+
+
+# -- canonical endpoints ----------------------------------------------------
+
+
 @router.get("/projects")
 async def list_projects():
-    """List all projects with metadata."""
-    from dataclasses import asdict
-
+    """List all projects (TEMPLATE excluded)."""
     from iris.projects import list_projects as _list
 
     return [asdict(info) for info in _list()]
 
 
-@router.post("/projects/create")
+@router.post("/projects")
 async def create_project(req: CreateProjectRequest):
-    """Create a new project."""
-    from iris.projects import create_project
+    """Create a new project workspace from TEMPLATE."""
+    from iris.projects import create_project as _create
 
     try:
-        create_project(req.name, description=req.description)
-        return {"ok": True}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        _create(req.name, description=req.description)
+    except FileExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return _project_info_dict(req.name)
 
 
-@router.post("/projects/open")
-async def open_project(req: CreateProjectRequest):
-    """Open (activate) a project."""
-    from iris.projects import open_project
+@router.get("/projects/active")
+async def get_active_project():
+    """Return the active project metadata, or ``{"active": null}`` if none."""
+    from iris.projects import resolve_active_project
 
-    try:
-        open_project(req.name)
-        return {"ok": True}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/projects/close")
-async def close_project():
-    """Close the active project."""
-    from iris.projects import close_project
-
-    close_project()
-    return {"ok": True}
+    active = resolve_active_project()
+    if active is None:
+        return {"active": None}
+    return {"active": _project_info_dict(active.name)}
 
 
-@router.get("/projects/info")
-async def project_info(name: str | None = None):
-    """Get project metadata (mirrors `iris project info`)."""
-    from dataclasses import asdict
-
-    from iris.projects import (
-        _describe_project,
-        get_project_config,
-        project_root,
-        resolve_active_project,
-    )
+@router.post("/projects/active")
+async def set_active_project(req: SetActiveRequest):
+    """Mark ``name`` as the active project."""
+    from iris.projects import set_active_project as _set
 
     try:
-        if name is None:
-            active = resolve_active_project()
-            if active is None:
-                return {"info": None, "error": "No active project."}
-            name = active.name
-        path = project_root() / name
-        if not path.is_dir():
-            return {"info": None, "error": f"Project '{name}' not found"}
-        cfg = get_project_config(name)
-        described = _describe_project(path)
-        info = asdict(described)
-        if cfg.get("agent_notes"):
-            info["agent_notes"] = cfg["agent_notes"]
-        return {"info": info}
-    except Exception as e:
-        return {"info": None, "error": str(e)}
+        _set(req.name)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"active": _project_info_dict(req.name)}
 
 
-@router.post("/projects/rename")
-async def rename_project(req: RenameProjectRequest):
-    """Rename a project directory."""
-    root = get_iris_root() / "projects"
-    old = root / req.old_name
-    new = root / req.new_name
-    if not old.exists():
-        raise HTTPException(status_code=404, detail=f"Project '{req.old_name}' not found")
-    if new.exists():
-        raise HTTPException(status_code=409, detail=f"Project '{req.new_name}' already exists")
-    old.rename(new)
-    return {"ok": True}
-
-
-@router.post("/projects/delete")
-async def delete_project(req: CreateProjectRequest):
-    """Delete a project and all its data."""
-    import shutil
-
-    project_dir = get_iris_root() / "projects" / req.name
-    if not project_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Project '{req.name}' not found")
-    shutil.rmtree(project_dir)
-    return {"ok": True}
-
-
-class FindPlotRequest(BaseModel):
-    dsl: str
-    window: str = "full"
+# Non-canonical supporting endpoints. Declared before ``/projects/{name}``
+# so FastAPI's path matcher doesn't route e.g. ``/projects/find-plot`` to the
+# dynamic-segment handler.
 
 
 @router.get("/projects/find-plot")
@@ -135,18 +131,69 @@ async def find_plot(dsl: str, window: str = "full"):
     if project_path is None:
         raise HTTPException(status_code=400, detail="No active project.")
 
-    # Parse window
     if window == "full":
-        window_ms = "full"
+        window_ms: str | list[float] = "full"
     else:
         try:
             parts = [float(x.strip()) for x in window.split(",")]
             if len(parts) != 2:
                 raise ValueError
             window_ms = parts
-        except (ValueError, AttributeError):
-            raise HTTPException(status_code=400, detail=f"Invalid window: '{window}'")
+        except (ValueError, AttributeError) as e:
+            raise HTTPException(status_code=400, detail=f"Invalid window: '{window}'") from e
 
     paths_cfg = _config.get("paths", {}) if _config else {}
     matches = find_cached_plots(project_path, dsl, paths_cfg, window_ms)
     return [{"plot_path": str(m.plot_path), "sidecar_path": str(m.sidecar_path)} for m in matches]
+
+
+@router.post("/projects/rename")
+async def rename_project(req: RenameProjectRequest):
+    """Rename a project directory.
+
+    Retained for CLI/frontend parity; not part of the canonical six. Uses the
+    FS directly because the rebuilt :mod:`iris.projects` does not (yet)
+    expose a rename helper.
+    """
+    from iris.projects import project_root
+
+    root = project_root()
+    old = root / req.old_name
+    new = root / req.new_name
+    if not old.exists():
+        raise HTTPException(status_code=404, detail=f"Project '{req.old_name}' not found")
+    if new.exists():
+        raise HTTPException(status_code=409, detail=f"Project '{req.new_name}' already exists")
+    old.rename(new)
+    return {"ok": True}
+
+
+# Dynamic-segment endpoints last so they don't shadow the static routes above.
+
+
+@router.get("/projects/{name}")
+async def open_project(name: str):
+    """Open (activate) a project and return its metadata."""
+    from iris.projects import open_project as _open
+
+    try:
+        _open(name)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return _project_info_dict(name)
+
+
+@router.delete("/projects/{name}")
+async def delete_project(name: str):
+    """Delete a project and all its data."""
+    from iris.projects import delete_project as _delete
+
+    try:
+        _delete(name)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": True, "name": name}
