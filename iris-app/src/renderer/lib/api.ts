@@ -294,9 +294,10 @@ export const api = {
     const res = await fetch(url)
     if (!res.ok) return { entries: [] }
     const data = await res.json()
-    // Daemon may return {entries: [...]} or a bare list — normalize.
+    // Daemon returns {data: [...]}; tolerate legacy {entries:[...]}, {rows:[...]},
+    // and bare arrays for backward compatibility.
     if (Array.isArray(data)) return { entries: data }
-    return { entries: data.entries ?? data.rows ?? [] }
+    return { entries: data.data ?? data.entries ?? data.rows ?? [] }
   },
 
   proposeMemoryEntry: async (body: Record<string, any>): Promise<any> => {
@@ -443,7 +444,9 @@ export const api = {
     const res = await fetch(url)
     if (!res.ok) return { artifacts: [] }
     const data = await res.json()
-    const rows = Array.isArray(data) ? data : (data.data ?? data.artifacts ?? [])
+    const rows = Array.isArray(data)
+      ? data
+      : (data.data ?? data.artifacts ?? data.rows ?? [])
     return { artifacts: rows }
   },
 
@@ -493,7 +496,7 @@ export const api = {
     if (!res.ok) return { datasets: [] }
     const data = await res.json()
     if (Array.isArray(data)) return { datasets: data }
-    return { datasets: data.datasets ?? data.data ?? [] }
+    return { datasets: data.data ?? data.datasets ?? data.rows ?? [] }
   },
 
   getDataset: async (id: string): Promise<any | null> => {
@@ -511,7 +514,7 @@ export const api = {
     if (!res.ok) return { versions: [] }
     const data = await res.json()
     if (Array.isArray(data)) return { versions: data }
-    return { versions: data.versions ?? data.data ?? [] }
+    return { versions: data.data ?? data.versions ?? data.rows ?? [] }
   },
 
   profileDataset: async (
@@ -556,7 +559,11 @@ export const api = {
     if (opts?.status) qs.set('status', opts.status)
     if (opts?.limit) qs.set('limit', String(opts.limit))
     const res = await fetch(`${BASE}/api/memory/runs${qs.toString() ? '?' + qs : ''}`)
-    return res.json()
+    if (!res.ok) return { rows: [] }
+    const data = await res.json()
+    if (Array.isArray(data)) return { rows: data }
+    // Daemon returns {data:[...]}; RunHistory consumes `res.rows`.
+    return { rows: data.data ?? data.rows ?? data.runs ?? [], ...data }
   },
   getRunLineage: async (_project: string, runId: string) => {
     const res = await fetch(

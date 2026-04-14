@@ -1500,7 +1500,20 @@ async def validate_op(op_id: str, req: _ValidateOpRequest) -> dict[str, Any]:
             source_code=req.source_code,
             test_code=req.test_code,
         )
-        return {"data": result.__dict__ if hasattr(result, "__dict__") else result}
+        # ValidationResult is a dict subclass — `__dict__` is empty, so we
+        # convert with `dict()` to get the actual field payload. Dataclasses
+        # or pydantic models (not currently used here) would need a different
+        # adapter, but every return path from validate_operation is a
+        # ValidationResult today.
+        if isinstance(result, dict):
+            payload = dict(result)
+        elif hasattr(result, "model_dump"):
+            payload = result.model_dump()
+        elif hasattr(result, "__dict__") and result.__dict__:
+            payload = dict(result.__dict__)
+        else:
+            payload = {}
+        return {"data": payload}
     finally:
         conn.close()
 

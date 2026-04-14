@@ -154,8 +154,22 @@ def end_session(
     )
 
 
+def _parse_iso(ts: str) -> datetime:
+    """Parse an ISO-8601 timestamp that may end in ``Z`` (UTC)."""
+    if ts.endswith("Z"):
+        ts = ts[:-1] + "+00:00"
+    return datetime.fromisoformat(ts)
+
+
 def get_session(conn: sqlite3.Connection, session_id: str) -> dict[str, Any]:
-    """Return the session row as a dict.
+    """Return the session row as a dict, with derived counts + duration.
+
+    In addition to the raw columns, the response carries:
+
+    - ``message_count`` — rows in ``messages`` for this session.
+    - ``tool_call_count`` — rows in ``tool_calls`` for this session.
+    - ``duration_ms`` — ``ended_at - started_at`` in milliseconds, or
+      ``None`` if the session is still open.
 
     Raises
     ------
@@ -170,13 +184,33 @@ def get_session(conn: sqlite3.Connection, session_id: str) -> dict[str, Any]:
     ).fetchone()
     if row is None:
         raise LookupError(f"session {session_id!r} not found")
+
+    message_count = conn.execute(
+        "SELECT COUNT(*) FROM messages WHERE session_id = ?",
+        (session_id,),
+    ).fetchone()[0]
+    tool_call_count = conn.execute(
+        "SELECT COUNT(*) FROM tool_calls WHERE session_id = ?",
+        (session_id,),
+    ).fetchone()[0]
+
+    started_at = row[2]
+    ended_at = row[3]
+    duration_ms: int | None = None
+    if ended_at is not None:
+        delta = _parse_iso(ended_at) - _parse_iso(started_at)
+        duration_ms = int(delta.total_seconds() * 1000)
+
     return {
         "session_id": row[0],
         "project_id": row[1],
-        "started_at": row[2],
-        "ended_at": row[3],
+        "started_at": started_at,
+        "ended_at": ended_at,
         "model_provider": row[4],
         "model_name": row[5],
         "system_prompt_hash": row[6],
         "summary": row[7],
+        "message_count": int(message_count),
+        "tool_call_count": int(tool_call_count),
+        "duration_ms": duration_ms,
     }

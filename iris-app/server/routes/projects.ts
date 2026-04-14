@@ -5,7 +5,7 @@ import { join } from 'path'
 import multer from 'multer'
 import archiver from 'archiver'
 import { getProjectsDir } from '../lib/paths.js'
-import { daemonGet, daemonPost, daemonDelete } from '../services/daemon-client.js'
+import { daemonGet, daemonPost, daemonDelete, forwardDaemonError } from '../services/daemon-client.js'
 import type { PlotWatcher, ReportWatcher } from '../services/watchers.js'
 
 interface DaemonProjectInfo {
@@ -51,8 +51,8 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
     try {
       const data = await daemonGet<DaemonActiveResponse>('/api/projects/active')
       res.json(data)
-    } catch (err: any) {
-      res.status(502).json({ error: err.message })
+    } catch (err) {
+      forwardDaemonError(res, err)
     }
   })
 
@@ -65,8 +65,8 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
       watchers.plotWatcher.watchProject(`${projectsDir}/${name}`)
       watchers.reportWatcher.watchProject(name, projectsDir)
       res.json(data)
-    } catch (err: any) {
-      res.status(502).json({ error: err.message })
+    } catch (err) {
+      forwardDaemonError(res, err)
     }
   })
 
@@ -76,8 +76,8 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
       const { name, description } = req.body as { name: string; description?: string }
       const info = await daemonPost<DaemonProjectInfo>('/api/projects', { name, description })
       res.json(info)
-    } catch (err: any) {
-      res.status(502).json({ error: err.message })
+    } catch (err) {
+      forwardDaemonError(res, err)
     }
   })
 
@@ -90,8 +90,8 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
       watchers.plotWatcher.watchProject(`${projectsDir}/${req.params.name}`)
       watchers.reportWatcher.watchProject(req.params.name, projectsDir)
       res.json(info)
-    } catch (err: any) {
-      res.status(502).json({ error: err.message })
+    } catch (err) {
+      forwardDaemonError(res, err)
     }
   })
 
@@ -100,8 +100,8 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
     try {
       const data = await daemonDelete<{ ok: boolean; name: string }>(`/api/projects/${encodeURIComponent(req.params.name)}`)
       res.json(data)
-    } catch (err: any) {
-      res.status(502).json({ error: err.message })
+    } catch (err) {
+      forwardDaemonError(res, err)
     }
   })
 
@@ -116,8 +116,8 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
       watchers.plotWatcher.watchProject(`${projectsDir}/${name}`)
       watchers.reportWatcher.watchProject(name, projectsDir)
       res.json({ ok: true })
-    } catch (err: any) {
-      res.status(502).json({ error: err.message })
+    } catch (err) {
+      forwardDaemonError(res, err)
     }
   })
 
@@ -126,8 +126,8 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
       const { name, description } = req.body as { name: string; description?: string }
       await daemonPost<DaemonProjectInfo>('/api/projects', { name, description })
       res.json({ ok: true })
-    } catch (err: any) {
-      res.status(502).json({ error: err.message })
+    } catch (err) {
+      forwardDaemonError(res, err)
     }
   })
 

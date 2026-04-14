@@ -39,6 +39,7 @@ __all__ = [
     "EVENT_TYPES",
     "EventType",
     "append_event",
+    "append_event_in_txn",
     "verify_chain",
     # Individual constants, re-exported for autocomplete-friendly use.
     "EVT_MESSAGE",
@@ -148,42 +149,76 @@ def append_event(
     if type not in EVENT_TYPES:
         raise ValueError(f"unknown event type {type!r}; expected one of {sorted(EVENT_TYPES)}")
 
-    payload_json = _canonical_json(payload)
-    event_id = uuid.uuid4().hex
-    ts = _now_iso()
-
     # Connections opened by db.connect use isolation_level=None (autocommit).
     # We need an explicit transaction so the chain-head read and the insert
     # are atomic with respect to other writers.
     conn.execute("BEGIN IMMEDIATE")
     try:
-        row = conn.execute(
-            "SELECT event_hash FROM events WHERE project_id = ? ORDER BY rowid DESC LIMIT 1",
-            (project_id,),
-        ).fetchone()
-        prev_event_hash: str | None = row[0] if row is not None else None
-        event_hash = _hash(type, payload_json, prev_event_hash)
-        conn.execute(
-            "INSERT INTO events ("
-            "event_id, project_id, session_id, ts, type, "
-            "payload_json, prev_event_hash, event_hash"
-            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                event_id,
-                project_id,
-                session_id,
-                ts,
-                type,
-                payload_json,
-                prev_event_hash,
-                event_hash,
-            ),
+        event_id = append_event_in_txn(
+            conn,
+            project_id=project_id,
+            type=type,
+            payload=payload,
+            session_id=session_id,
         )
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
         raise
 
+    return event_id
+
+
+def append_event_in_txn(
+    conn: sqlite3.Connection,
+    *,
+    project_id: str,
+    type: str,
+    payload: dict[str, Any],
+    session_id: str | None = None,
+) -> str:
+    """Append an event without opening a transaction.
+
+    Caller must already hold an open transaction (typically
+    ``BEGIN IMMEDIATE``). This exists so domain modules
+    (``messages.append_message``, ``tool_calls.append_tool_call``) can
+    wrap their row insert + hash-chain link in a single atomic unit
+    without the nested-BEGIN error SQLite would otherwise raise.
+
+    Raises
+    ------
+    ValueError
+        If ``type`` is not one of :data:`EVENT_TYPES`.
+    """
+    if type not in EVENT_TYPES:
+        raise ValueError(f"unknown event type {type!r}; expected one of {sorted(EVENT_TYPES)}")
+
+    payload_json = _canonical_json(payload)
+    event_id = uuid.uuid4().hex
+    ts = _now_iso()
+
+    row = conn.execute(
+        "SELECT event_hash FROM events WHERE project_id = ? ORDER BY rowid DESC LIMIT 1",
+        (project_id,),
+    ).fetchone()
+    prev_event_hash: str | None = row[0] if row is not None else None
+    event_hash = _hash(type, payload_json, prev_event_hash)
+    conn.execute(
+        "INSERT INTO events ("
+        "event_id, project_id, session_id, ts, type, "
+        "payload_json, prev_event_hash, event_hash"
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            event_id,
+            project_id,
+            session_id,
+            ts,
+            type,
+            payload_json,
+            prev_event_hash,
+            event_hash,
+        ),
+    )
     return event_id
 
 

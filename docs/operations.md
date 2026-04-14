@@ -20,6 +20,10 @@ All operations are defined in [`engine.py`](engine.py). Each takes a typed input
 **Calcium Imaging**
 - [`baseline_correction`](#baseline_correction) — Fluorescence drift removal
 
+**Spike Curation**
+- [`spike_pca`](#spike_pca) — PCA-based spike feature extraction & outlier tagging
+- [`spike_curate`](#spike_curate) — Iterative spike removal guided by calcium cross-correlation
+
 **Signal Simulation & Analysis**
 - [`gcamp_sim`](#gcamp_sim) — GCaMP fluorescence kernel convolution
 - [`x_corr`](#x_corr) — Cross-correlation alignment

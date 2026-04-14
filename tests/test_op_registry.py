@@ -1,26 +1,44 @@
 """Op registry + type-transition tests."""
+
 from __future__ import annotations
 
 import pytest
 
 from iris.engine import (
+    TYPE_TRANSITIONS,
     CATrace,
-    FreqPowerTraces,
     MEABank,
     MEATrace,
     OpRegistry,
-    RTBank,
-    RTTrace,
-    SaturationReport,
     SimCalcium,
     SimCalciumBank,
-    SpikePCA,
-    SpikeTrain,
     Spectrogram,
-    TYPE_TRANSITIONS,
+    SpikeTrain,
     _SpikeBankIntermediate,
     create_registry,
 )
+
+EXPECTED_OP_COUNT = 17
+
+EXPECTED_OP_NAMES = {
+    "butter_bandpass",
+    "notch_filter",
+    "saturation_mask",
+    "constant_rms",
+    "sliding_rms",
+    "spike_pca",
+    "spike_curate",
+    "baseline_correction",
+    "rt_detect",
+    "sigmoid",
+    "rt_thresh",
+    "gcamp_sim",
+    "spectrogram",
+    "freq_traces",
+    "amp_gain_correction",
+    "saturation_survey",
+    "x_corr",
+}
 
 
 def test_create_registry_default_backend():
@@ -28,9 +46,26 @@ def test_create_registry_default_backend():
     assert isinstance(registry, OpRegistry)
     assert set(source_loaders) == {"mea_trace", "ca_trace", "rtsort"}
     # All 17 ops + 1 overlay handler + 11 plot handlers + 2 margin calculators
-    assert len(registry._handlers) == 17
+    assert len(registry._handlers) == EXPECTED_OP_COUNT
     assert len(registry._plot_handlers) == 11
     assert registry._overlay_plot_handler is not None
+
+
+def test_type_transitions_covers_every_registered_op():
+    """Lock-in: TYPE_TRANSITIONS must surface all 17 hardcoded ops (incl. binary)."""
+    registry, _ = create_registry()
+    assert set(TYPE_TRANSITIONS.keys()) == EXPECTED_OP_NAMES
+    assert set(registry._handlers.keys()) == EXPECTED_OP_NAMES
+    # Every op publishes at least one transition row (binary ops included).
+    for name in EXPECTED_OP_NAMES:
+        assert TYPE_TRANSITIONS[name], f"{name} has no transitions"
+
+
+def test_binary_ops_have_signatures():
+    """spike_curate and x_corr are binary; BINARY_OP_SIGNATURES documents their right operand."""
+    from iris.engine.type_system import BINARY_OP_SIGNATURES
+
+    assert set(BINARY_OP_SIGNATURES.keys()) == {"spike_curate", "x_corr"}
 
 
 def test_create_registry_invalid_backend_raises():

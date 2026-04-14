@@ -33,6 +33,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from iris.projects.events import EVT_MESSAGE, append_event_in_txn
+
 __all__ = [
     "ROLES",
     "append_message",
@@ -80,6 +82,18 @@ def append_message(
     message_id = uuid.uuid4().hex
     ts = _now_iso()
 
+    # Resolve project_id for the event-log append. The session must exist; if
+    # it doesn't, the INSERT below would fail on the FK anyway — this lookup
+    # lets us fail earlier with a cleaner error and gives append_event the
+    # project scope it needs for the hash chain.
+    row = conn.execute(
+        "SELECT project_id FROM sessions WHERE session_id = ?",
+        (session_id,),
+    ).fetchone()
+    if row is None:
+        raise sqlite3.IntegrityError(f"session {session_id!r} not found")
+    project_id = row[0]
+
     conn.execute("BEGIN IMMEDIATE")
     try:
         cursor = conn.execute(
@@ -94,6 +108,24 @@ def append_message(
         conn.execute(
             "INSERT INTO messages_fts(rowid, content) VALUES (?, ?)",
             (rowid, content),
+        )
+        # Per routes/CLAUDE.md §5, every mutating memory write must append
+        # an event in the SAME transaction so the hash chain and domain
+        # row commit atomically. Payload is small: row id + role + byte
+        # length — enough to reconstruct the pointer without duplicating
+        # the content blob (FTS already owns the searchable copy).
+        append_event_in_txn(
+            conn,
+            project_id=project_id,
+            type=EVT_MESSAGE,
+            payload={
+                "message_id": message_id,
+                "session_id": session_id,
+                "role": role,
+                "content_len": len(content),
+                "token_count": token_count,
+            },
+            session_id=session_id,
         )
         conn.execute("COMMIT")
     except Exception:

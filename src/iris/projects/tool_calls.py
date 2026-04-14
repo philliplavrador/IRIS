@@ -30,6 +30,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from iris.projects.events import (
+    EVT_TOOL_CALL,
+    EVT_TOOL_RESULT,
+    append_event_in_txn,
+)
+
 __all__ = [
     "append_tool_call",
     "attach_output_artifact",
@@ -70,26 +76,74 @@ def append_tool_call(
     ts = _now_iso()
     input_json = json.dumps(input, sort_keys=True, separators=(",", ":"))
 
-    conn.execute(
-        "INSERT INTO tool_calls ("
-        "tool_call_id, session_id, event_id, tool_name, input_json, "
-        "output_artifact_id, output_summary, success, error_text, ts, "
-        "execution_time_ms"
-        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            tool_call_id,
-            session_id,
-            event_id,
-            tool_name,
-            input_json,
-            output_artifact_id,
-            output_summary,
-            1 if success else 0,
-            error,
-            ts,
-            execution_time_ms,
-        ),
-    )
+    # Resolve project_id so we can append to the event log in the same
+    # transaction (routes/CLAUDE.md §5). Done outside the BEGIN so a missing
+    # session surfaces a cleaner error than the FK violation the insert would
+    # otherwise raise.
+    row = conn.execute(
+        "SELECT project_id FROM sessions WHERE session_id = ?",
+        (session_id,),
+    ).fetchone()
+    if row is None:
+        raise sqlite3.IntegrityError(f"session {session_id!r} not found")
+    project_id = row[0]
+
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(
+            "INSERT INTO tool_calls ("
+            "tool_call_id, session_id, event_id, tool_name, input_json, "
+            "output_artifact_id, output_summary, success, error_text, ts, "
+            "execution_time_ms"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                tool_call_id,
+                session_id,
+                event_id,
+                tool_name,
+                input_json,
+                output_artifact_id,
+                output_summary,
+                1 if success else 0,
+                error,
+                ts,
+                execution_time_ms,
+            ),
+        )
+        # Emit the tool_call event (invocation). If the call already carries
+        # a success/error flag we also emit tool_result — this matches the
+        # SDK lifecycle (tool_use then tool_result) while keeping payloads
+        # small: ids + tool_name + success + short error, never the full
+        # input/output blobs (those live in the row / artifacts store).
+        append_event_in_txn(
+            conn,
+            project_id=project_id,
+            type=EVT_TOOL_CALL,
+            payload={
+                "tool_call_id": tool_call_id,
+                "session_id": session_id,
+                "tool_name": tool_name,
+            },
+            session_id=session_id,
+        )
+        append_event_in_txn(
+            conn,
+            project_id=project_id,
+            type=EVT_TOOL_RESULT,
+            payload={
+                "tool_call_id": tool_call_id,
+                "session_id": session_id,
+                "tool_name": tool_name,
+                "success": bool(success),
+                "error": (error[:200] if error else None),
+                "execution_time_ms": execution_time_ms,
+            },
+            session_id=session_id,
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
 
     return tool_call_id
 

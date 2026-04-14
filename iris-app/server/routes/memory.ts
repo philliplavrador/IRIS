@@ -14,14 +14,15 @@ import {
   daemonGet,
   daemonPatch,
   daemonPost,
+  forwardDaemonError,
 } from "../services/daemon-client.js";
 
 function forwardError(res: Response, e: unknown): void {
-  const msg = e instanceof Error ? e.message : String(e);
-  // Best-effort: daemon-client throws with the status code baked into the
-  // message. We don't parse that here — just report 502 with the message
-  // so the frontend shows the daemon's explanation verbatim.
-  res.status(502).json({ error: msg });
+  // Forwards upstream status + body verbatim when the daemon reported the
+  // failure (DaemonHTTPError); otherwise 502 with the error message. This
+  // keeps 404 / 409 / 503 round-tripping cleanly instead of collapsing to
+  // an opaque 502 (MED #5 / LOW #7).
+  forwardDaemonError(res, e);
 }
 
 export function registerMemoryRoutes(app: Express): void {
@@ -519,6 +520,18 @@ export function registerMemoryRoutes(app: Express): void {
     }
   });
 
+  // -- markdown sync ---------------------------------------------------
+  app.post(
+    "/api/memory/regenerate_markdown",
+    async (_req: Request, res: Response) => {
+      try {
+        res.json(await daemonPost("/api/memory/regenerate_markdown", {}));
+      } catch (e) {
+        forwardError(res, e);
+      }
+    },
+  );
+
   app.get("/api/memory/metrics", async (_req: Request, res: Response) => {
     try {
       res.json(await daemonGet("/api/memory/metrics"));
@@ -603,7 +616,8 @@ export function registerMemoryRoutes(app: Express): void {
         );
         if (!upstream.ok) {
           const text = await upstream.text();
-          res.status(upstream.status === 404 ? 404 : 502).json({ error: text });
+          // Forward the daemon's actual status so 404/409/503 don't become 502.
+          res.status(upstream.status).json({ error: text });
           return;
         }
         const contentType = upstream.headers.get("content-type");

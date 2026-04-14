@@ -11,7 +11,8 @@ import { api } from '../../lib/api'
 // Permissive shape — tighten once the daemon settles on a final schema
 // (REVAMP §7 memory_entries). TODO(phase-10): share this type with api.ts.
 type MemoryEntry = {
-  id: string
+  id?: string
+  memory_id?: string
   memory_type?: string
   content?: string
   text?: string
@@ -115,11 +116,14 @@ export function MemoryInspector() {
           {!loading && entries.length === 0 && (
             <div className="text-sm text-muted-foreground">No entries.</div>
           )}
-          {entries.map((e) => (
-            <Card key={e.id} className="p-3">
-              <EntryView entry={e} onStatus={setStatus} onDelete={softDelete} />
-            </Card>
-          ))}
+          {entries.map((e) => {
+            const id = e.id ?? e.memory_id ?? ''
+            return (
+              <Card key={id} className="p-3">
+                <EntryView entry={{ ...e, id }} onStatus={setStatus} onDelete={softDelete} />
+              </Card>
+            )
+          })}
         </div>
       </ScrollArea>
     </div>

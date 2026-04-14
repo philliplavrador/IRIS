@@ -6,7 +6,7 @@ import { spawn } from 'child_process'
 import { createBroadcaster } from './lib/broadcast.js'
 import { getIrisRoot, getProjectsDir } from './lib/paths.js'
 import { PlotWatcher, ReportWatcher } from './services/watchers.js'
-import { isDaemonHealthy } from './services/daemon-client.js'
+import { isDaemonHealthy, daemonGet, forwardDaemonError } from './services/daemon-client.js'
 import { registerAgentRoutes } from './routes/agent.js'
 import { registerProjectRoutes } from './routes/projects.js'
 import { registerMemoryRoutes } from './routes/memory.js'
@@ -60,11 +60,21 @@ app.get('/api/config', async (_req, res) => {
 
 app.get('/api/ops', async (_req, res) => {
   try {
-    const { daemonGet } = await import('./services/daemon-client.js')
     const ops = await daemonGet('/api/ops')
     res.json(ops)
   } catch {
     res.json([])
+  }
+})
+
+// GET /api/ops/:name — single-op signature + default params (MED #5).
+// Proxies to the daemon so 404s for unknown ops round-trip cleanly.
+app.get('/api/ops/:name', async (req, res) => {
+  try {
+    const sig = await daemonGet(`/api/ops/${encodeURIComponent(req.params.name)}`)
+    res.json(sig)
+  } catch (err) {
+    forwardDaemonError(res, err)
   }
 })
 
