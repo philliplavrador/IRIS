@@ -8,44 +8,48 @@ Each subdirectory under `projects/` is a durable, self-contained analysis worksp
 projects/
 ├── TEMPLATE/               (committed skeleton, copied on project creation)
 │   ├── CLAUDE.md           (per-project navigation stub)
-│   ├── claude_config.yaml  (name, description, overrides)
-│   ├── claude_history.md   (Goals / Open Questions / Decisions / Ops / Plots / Refs / Next Steps)
-│   ├── memory.yaml         (learned facts, data profiles, analysis state — AI-managed)
+│   ├── claude_config.yaml  (name, description, autonomy/pushback/memory dials, overrides)
 │   ├── report.md           (living writeup)
-│   ├── conversations/      (JSONL chat history + session.json for Claude Code SDK resume)
+│   ├── conversations/      (L0 — JSONL chat history per session)
+│   ├── digests/            (L2 — auto-drafted + finalized session digests)
+│   ├── views/              (regenerated human-readable views of L2/L3)
 │   ├── input_data/         (user-uploaded datasets)
 │   ├── custom_ops/         (project-scoped Python operations)
 │   ├── claude_references/  (agent-gathered refs)
 │   ├── user_references/    (user-placed refs)
 │   └── output/             (sessions + plots)
 └── <your-project>/         (gitignored; created from TEMPLATE)
+    ├── ledger.sqlite       (L1 — event ledger: ops_runs, plots, cache)
+    ├── knowledge.sqlite    (L3 — curated goals, decisions, facts, annotations)
     └── ... plus .cache/ at the same level as output/
 ```
 
-## Key files in each project
+## Memory model
 
-- **`memory.yaml`** — Per-project persistent memory. Stores data profiles, learned facts (data quality, user preferences, analysis decisions), and analysis state (completed analyses, pending questions). The AI reads this on every prompt and writes to it when it learns something new. This is how context survives across sessions.
-- **`conversations/history.jsonl`** — Full chat history as JSONL (one message per line). Loaded on project open to hydrate the chat UI.
-- **`conversations/session.json`** — Claude Code SDK sessionId for conversation resume.
-- **`claude_config.yaml`** — Project name, description, and config overrides (paths, ops, globals).
-- **`claude_history.md`** — Structured chronological notes (Goals, Decisions, Next Steps, etc.).
-- **`report.md`** — Living analysis report the AI compiles from findings.
+Memory is split across five layers (see `docs/iris-memory.md`):
+- **L0** conversation JSONL under `conversations/`
+- **L1** event ledger in `ledger.sqlite`
+- **L2** session digests under `digests/` (draft + final)
+- **L3** curated knowledge in `knowledge.sqlite`
+- **L4** semantic index (optional `memory.vec`)
+
+`views/history.md` and `views/analysis_log.md` are **regenerated** from L2/L3 for human reading — never edited by hand and never used as source of truth.
 
 ## How agents should interact with a project
 
 1. On startup, read `.iris/active_project` to get the project name.
 2. Read `claude_config.yaml` (always fine to load fully).
-3. Read **only** the `## Goals` and `## Next Steps` sections of `claude_history.md`.
-4. The system prompt builder injects `memory.yaml` content automatically — no need to read it manually.
-5. After meaningful exchanges, append terse dated bullets to `claude_history.md`.
+3. Trust the pinned memory slice the daemon injects via `/api/memory/build_slice`. Do not grep the SQLite files directly — use `recall`, `get`, `read_ledger`, `read_conversation`.
+4. Propose durable writes via `propose_*` endpoints; they are committed by the curation ritual at session end (see `docs/iris-behavior.md` §7).
 
 ## Rules
 
 - **Never** commit project contents (other than TEMPLATE). The .gitignore handles this.
 - **Never** put cache files under `output/` — caches live in `.cache/`.
-- **Never** invent new top-level sections in `claude_history.md`.
+- **Never** read memory stores by file path — go through the memory tool endpoints.
 
 ## See also
 - [../CLAUDE.md](../CLAUDE.md) — repo root nav
-- [../docs/projects.md](../docs/projects.md) — full project contract
-- [../src/iris/projects.py](../src/iris/projects.py) — lifecycle API
+- [../docs/iris-memory.md](../docs/iris-memory.md) — memory architecture
+- [../docs/iris-behavior.md](../docs/iris-behavior.md) — behavior blueprint
+- [../src/iris/projects/__init__.py](../src/iris/projects/__init__.py) — lifecycle API

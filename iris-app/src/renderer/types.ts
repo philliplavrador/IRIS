@@ -42,7 +42,7 @@ export interface ToolUseInfo {
   output?: string
 }
 
-export type WorkspaceTab = 'plots' | 'report' | 'files'
+export type WorkspaceTab = 'plots' | 'report' | 'files' | 'memory' | 'curation' | 'behavior'
 
 export type SectionStatus = 'draft' | 'approved' | 'needs-revision'
 
@@ -52,6 +52,51 @@ export interface ReportSection {
   content: string
   status: SectionStatus
   userNotes?: string
+}
+
+export interface ProfileColumn {
+  name: string
+  dtype?: string
+  nulls?: number
+  min?: number | string | null
+  max?: number | string | null
+  mean?: number | null
+  std?: number | null
+  unique?: number
+  values?: string[]
+}
+
+export interface FileProfile {
+  kind?: string
+  path?: string
+  name?: string
+  bytes?: number
+  mtime?: string
+  suffix?: string
+  shape?: number[]
+  sampled?: boolean
+  columns?: ProfileColumn[]
+  datasets?: Array<{ name: string; shape: number[]; dtype: string }>
+  arrays?: Record<string, { shape: number[]; dtype: string }>
+  variables?: Record<string, { shape: number[]; dtype: string }>
+  tables?: Record<string, { columns: Array<{ name: string; type: string }>; rows: number | null }>
+  keys?: string[]
+  top_type?: string
+  error?: string
+  note?: string
+  sample_head?: string
+}
+
+export interface UploadedProfile {
+  name: string
+  path: string
+  profile: FileProfile | null
+  error?: string
+}
+
+export interface UploadResult {
+  count: number
+  profiles: UploadedProfile[]
 }
 
 export interface FileNode {

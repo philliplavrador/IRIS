@@ -41,13 +41,12 @@ dependencies = [
     "h5py>=3.8",
     "tqdm>=4.60",
     "pyyaml>=6.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "pandas>=2.3.3",
 ]
 
 [project.optional-dependencies]
-daemon = [
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.34",
-]
 dev = [
     "pytest>=8",
     "pytest-cov",
@@ -85,3 +84,11 @@ ignore = ["E501", "B008"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-q --strict-markers"
+markers = [
+    "slow: expensive tests (large synthetic corpora, optional embedding models); excluded from default runs via -m 'not slow'",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+]

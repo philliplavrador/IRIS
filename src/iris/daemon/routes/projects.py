@@ -1,4 +1,5 @@
 """Project CRUD routes for the IRIS daemon."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -22,17 +23,20 @@ class RenameProjectRequest(BaseModel):
 @router.get("/projects")
 async def list_projects():
     """List all projects with metadata."""
+    from dataclasses import asdict
+
     from iris.projects import list_projects as _list
-    projects = _list(str(get_iris_root()))
-    return projects
+
+    return [asdict(info) for info in _list()]
 
 
 @router.post("/projects/create")
 async def create_project(req: CreateProjectRequest):
     """Create a new project."""
     from iris.projects import create_project
+
     try:
-        create_project(req.name, str(get_iris_root()), description=req.description)
+        create_project(req.name, description=req.description)
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -42,8 +46,9 @@ async def create_project(req: CreateProjectRequest):
 async def open_project(req: CreateProjectRequest):
     """Open (activate) a project."""
     from iris.projects import open_project
+
     try:
-        open_project(req.name, str(get_iris_root()))
+        open_project(req.name)
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -53,16 +58,37 @@ async def open_project(req: CreateProjectRequest):
 async def close_project():
     """Close the active project."""
     from iris.projects import close_project
-    close_project(str(get_iris_root()))
+
+    close_project()
     return {"ok": True}
 
 
 @router.get("/projects/info")
 async def project_info(name: str | None = None):
-    """Get project metadata."""
-    from iris.projects import project_info
+    """Get project metadata (mirrors `iris project info`)."""
+    from dataclasses import asdict
+
+    from iris.projects import (
+        _describe_project,
+        get_project_config,
+        project_root,
+        resolve_active_project,
+    )
+
     try:
-        info = project_info(name, str(get_iris_root()))
+        if name is None:
+            active = resolve_active_project()
+            if active is None:
+                return {"info": None, "error": "No active project."}
+            name = active.name
+        path = project_root() / name
+        if not path.is_dir():
+            return {"info": None, "error": f"Project '{name}' not found"}
+        cfg = get_project_config(name)
+        described = _describe_project(path)
+        info = asdict(described)
+        if cfg.get("agent_notes"):
+            info["agent_notes"] = cfg["agent_notes"]
         return {"info": info}
     except Exception as e:
         return {"info": None, "error": str(e)}
@@ -71,7 +97,6 @@ async def project_info(name: str | None = None):
 @router.post("/projects/rename")
 async def rename_project(req: RenameProjectRequest):
     """Rename a project directory."""
-    import shutil
     root = get_iris_root() / "projects"
     old = root / req.old_name
     new = root / req.new_name
@@ -87,6 +112,7 @@ async def rename_project(req: RenameProjectRequest):
 async def delete_project(req: CreateProjectRequest):
     """Delete a project and all its data."""
     import shutil
+
     project_dir = get_iris_root() / "projects" / req.name
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project '{req.name}' not found")
@@ -94,36 +120,9 @@ async def delete_project(req: CreateProjectRequest):
     return {"ok": True}
 
 
-class HistoryAddRequest(BaseModel):
-    section: str
-    bullets: list[str]
-    project: str | None = None
-
-
 class FindPlotRequest(BaseModel):
     dsl: str
     window: str = "full"
-
-
-@router.post("/projects/history/add")
-async def add_history(req: HistoryAddRequest):
-    """Append bullets to a section of the project's claude_history.md."""
-    from iris.projects import append_history, resolve_active_project
-
-    if req.project:
-        project_path = get_iris_root() / "projects" / req.project
-        if not project_path.is_dir():
-            raise HTTPException(status_code=404, detail=f"Project '{req.project}' not found")
-    else:
-        project_path = resolve_active_project()
-        if project_path is None:
-            raise HTTPException(status_code=400, detail="No active project.")
-
-    try:
-        append_history(project_path, req.section, req.bullets)
-        return {"ok": True}
-    except (ValueError, FileNotFoundError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/projects/find-plot")
@@ -150,7 +149,4 @@ async def find_plot(dsl: str, window: str = "full"):
 
     paths_cfg = _config.get("paths", {}) if _config else {}
     matches = find_cached_plots(project_path, dsl, paths_cfg, window_ms)
-    return [
-        {"plot_path": str(m.plot_path), "sidecar_path": str(m.sidecar_path)}
-        for m in matches
-    ]
+    return [{"plot_path": str(m.plot_path), "sidecar_path": str(m.sidecar_path)} for m in matches]

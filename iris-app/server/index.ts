@@ -9,6 +9,7 @@ import { PlotWatcher, ReportWatcher } from './services/watchers.js'
 import { isDaemonHealthy } from './services/daemon-client.js'
 import { registerAgentRoutes } from './routes/agent.js'
 import { registerProjectRoutes } from './routes/projects.js'
+import { registerMemoryRoutes } from './routes/memory.js'
 
 const PORT = 4001
 const IRIS_ROOT = getIrisRoot()
@@ -44,6 +45,7 @@ const reportWatcher = new ReportWatcher(broadcast)
 // Register routes
 registerAgentRoutes(app, broadcast)
 registerProjectRoutes(app, { plotWatcher, reportWatcher })
+registerMemoryRoutes(app)
 
 // Config, ops, sessions — pass through to daemon or serve directly
 app.get('/api/config', async (_req, res) => {

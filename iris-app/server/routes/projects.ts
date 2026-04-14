@@ -5,6 +5,7 @@ import { join } from 'path'
 import multer from 'multer'
 import archiver from 'archiver'
 import { getProjectsDir } from '../lib/paths.js'
+import { daemonPost } from '../services/daemon-client.js'
 import type { PlotWatcher, ReportWatcher } from '../services/watchers.js'
 
 interface Watchers {
@@ -102,6 +103,45 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
     }
   })
 
+  // Behavior dials (autonomy / pushback / memory) — round-trips claude_config.yaml
+  app.get('/api/projects/behavior', async (req, res) => {
+    try {
+      const name = req.query.name as string
+      const configRaw = await readFile(`${projectsDir}/${name}/claude_config.yaml`, 'utf-8')
+      res.json({ yaml: configRaw, ...parseBehaviorDials(configRaw) })
+    } catch (err: any) {
+      res.status(500).json({ error: err.message })
+    }
+  })
+
+  app.post('/api/projects/behavior', async (req, res) => {
+    try {
+      const { name, autonomy, pushback, memory } = req.body as {
+        name: string
+        autonomy?: string
+        pushback?: Record<string, string>
+        memory?: Record<string, number | boolean>
+      }
+      const path = `${projectsDir}/${name}/claude_config.yaml`
+      let yaml = await readFile(path, 'utf-8')
+      if (autonomy) yaml = replaceScalar(yaml, 'autonomy', autonomy)
+      if (pushback) {
+        for (const [k, v] of Object.entries(pushback)) {
+          yaml = replaceNested(yaml, 'pushback', k, String(v))
+        }
+      }
+      if (memory) {
+        for (const [k, v] of Object.entries(memory)) {
+          yaml = replaceNested(yaml, 'memory', k, String(v))
+        }
+      }
+      await writeFile(path, yaml, 'utf-8')
+      res.json({ ok: true, ...parseBehaviorDials(yaml) })
+    } catch (err: any) {
+      res.status(500).json({ error: err.message })
+    }
+  })
+
   app.get('/api/projects/info', async (req, res) => {
     try {
       const name = req.query.name as string
@@ -125,9 +165,24 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
     filename: (_req, file, cb) => cb(null, file.originalname),
   })})
 
-  app.post('/api/projects/upload', upload.array('files'), (req, res) => {
-    const count = (req.files as Express.Multer.File[])?.length ?? 0
-    res.json({ ok: true, count })
+  app.post('/api/projects/upload', upload.array('files'), async (req, res) => {
+    const files = (req.files as Express.Multer.File[]) ?? []
+    const project = ((req as any).query.name || (req as any).body?.name) as string | undefined
+    const profiles: Array<{ name: string; path: string; profile: any; error?: string }> = []
+    if (project) {
+      for (const f of files) {
+        try {
+          const body = await daemonPost('/api/memory/profile_data', {
+            project,
+            file_path: f.path,
+          }) as { profile: any }
+          profiles.push({ name: f.originalname, path: f.path, profile: body.profile })
+        } catch (e: any) {
+          profiles.push({ name: f.originalname, path: f.path, profile: null, error: e.message })
+        }
+      }
+    }
+    res.json({ ok: true, count: files.length, profiles })
   })
 
   // File listing
@@ -140,7 +195,7 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
       // Internal project scaffolding — hidden from user-facing file manager
       const HIDDEN = new Set([
         'claude_references', 'user_references', 'CLAUDE.md',
-        'claude_history.md', 'claude_config.yaml', 'memory.yaml', 'report.md',
+        'claude_config.yaml', 'report.md',
       ])
 
       async function walk(dir: string, prefix: string): Promise<{ name: string; path: string; type: 'file' | 'dir'; size: number }[]> {
@@ -188,28 +243,6 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
       res.json(JSON.parse(raw))
     } catch {
       res.json(null)
-    }
-  })
-
-  // Memory
-  app.get('/api/projects/memory', async (req, res) => {
-    try {
-      const name = req.query.name as string
-      if (!name) { res.json({ content: '' }); return }
-      const content = await readFile(`${projectsDir}/${name}/memory.yaml`, 'utf-8')
-      res.json({ content })
-    } catch {
-      res.json({ content: '' })
-    }
-  })
-
-  app.post('/api/projects/memory', async (req, res) => {
-    try {
-      const { name, content } = req.body
-      await writeFile(`${projectsDir}/${name}/memory.yaml`, content, 'utf-8')
-      res.json({ ok: true })
-    } catch (err: any) {
-      res.status(500).json({ error: err.message })
     }
   })
 
@@ -303,4 +336,54 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
       res.status(500).json({ error: err.message })
     }
   })
+}
+
+// -- claude_config.yaml dial helpers ---------------------------------------
+// Surgical in-place edits to preserve comments and formatting; full YAML
+// round-trip would rewrite the file.
+
+function parseBehaviorDials(yaml: string): {
+  autonomy: string
+  pushback: Record<string, string>
+  memory: Record<string, string>
+} {
+  const autonomy = (yaml.match(/^autonomy:\s*(\S+)/m)?.[1] ?? 'medium').trim()
+  return {
+    autonomy,
+    pushback: parseBlock(yaml, 'pushback'),
+    memory: parseBlock(yaml, 'memory'),
+  }
+}
+
+function parseBlock(yaml: string, key: string): Record<string, string> {
+  const re = new RegExp(`^${key}:\\s*$([\\s\\S]*?)(?=^\\S|\\Z)`, 'm')
+  const m = yaml.match(re)
+  const out: Record<string, string> = {}
+  if (!m) return out
+  for (const line of m[1].split(/\r?\n/)) {
+    const mm = line.match(/^\s+([A-Za-z_]+):\s*([^#\n]+?)\s*(?:#.*)?$/)
+    if (mm) out[mm[1]] = mm[2].trim()
+  }
+  return out
+}
+
+function replaceScalar(yaml: string, key: string, value: string): string {
+  const re = new RegExp(`^(${key}:\\s*)(\\S+)(.*)$`, 'm')
+  if (!re.test(yaml)) return yaml + `\n${key}: ${value}\n`
+  return yaml.replace(re, `$1${value}$3`)
+}
+
+function replaceNested(yaml: string, parent: string, key: string, value: string): string {
+  const re = new RegExp(`^(\\s+${key}:\\s*)([^#\\n]+?)(\\s*(?:#.*)?)$`, 'm')
+  // Only replace if inside the parent block — simple heuristic: must appear after "^parent:"
+  const pIdx = yaml.search(new RegExp(`^${parent}:`, 'm'))
+  if (pIdx < 0) return yaml
+  const before = yaml.slice(0, pIdx)
+  const after = yaml.slice(pIdx)
+  const nextTop = after.slice(1).search(/^\S/m)
+  const blockEnd = nextTop < 0 ? after.length : 1 + nextTop
+  const block = after.slice(0, blockEnd)
+  if (!re.test(block)) return yaml
+  const newBlock = block.replace(re, `$1${value}$3`)
+  return before + newBlock + after.slice(blockEnd)
 }

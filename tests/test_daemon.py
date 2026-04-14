@@ -77,3 +77,52 @@ def test_run_pipeline_no_project(client):
     resp = client.post("/api/run", json={"dsl": "mea_trace(0).butter_bandpass"})
     # Should be 400 (no active project) or 503 (not initialized)
     assert resp.status_code in (400, 503)
+
+
+def test_append_turn_writes_l0_jsonl(client, tmp_path, monkeypatch):
+    """POST /api/memory/append_turn writes a line to conversations/<sid>.jsonl."""
+    import json as _json
+    from iris.daemon import app as _app
+    from iris.projects import conversation as conv
+
+    # Point the daemon at a tmp IRIS root with a project directory.
+    proj_root = tmp_path / "projects" / "demo"
+    proj_root.mkdir(parents=True)
+    monkeypatch.setattr(_app, "_iris_root", tmp_path)
+
+    resp = client.post("/api/memory/append_turn", json={
+        "project": "demo",
+        "session_id": "s1",
+        "role": "user",
+        "text": "what's in the data",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["turn_index"] == 0
+
+    resp = client.post("/api/memory/append_turn", json={
+        "project": "demo",
+        "session_id": "s1",
+        "role": "assistant",
+        "text": "let me look",
+        "tool_calls": [{"id": "t1", "name": "Read", "input": {"p": "x"}}],
+    })
+    assert resp.status_code == 200
+    assert resp.json()["turn_index"] == 1
+
+    turns = conv.read_conversation(proj_root, "s1")
+    assert len(turns) == 2
+    assert turns[0]["role"] == "user"
+    assert turns[1]["tool_calls"][0]["name"] == "Read"
+
+
+def test_append_turn_rejects_bad_role(client, tmp_path, monkeypatch):
+    from iris.daemon import app as _app
+    (tmp_path / "projects" / "demo").mkdir(parents=True)
+    monkeypatch.setattr(_app, "_iris_root", tmp_path)
+    resp = client.post("/api/memory/append_turn", json={
+        "project": "demo",
+        "session_id": "s1",
+        "role": "nobody",
+        "text": "x",
+    })
+    assert resp.status_code == 400

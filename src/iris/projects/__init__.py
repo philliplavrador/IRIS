@@ -2,7 +2,7 @@
 
 A project is a durable analysis workspace under ``projects/<name>/`` that
 bundles references, per-project config, cached outputs, a living report,
-and a structured Claude history file. Projects are gitignored except for
+and the L0/L1/L2/L3 memory stores. Projects are gitignored except for
 ``TEMPLATE/`` and ``projects/README.md``.
 
 The active project is tracked via ``.iris/active_project`` (an untracked
@@ -11,15 +11,16 @@ invocations require an active project.
 
 See docs/projects.md for the full contract.
 """
+
 from __future__ import annotations
 
 import re
 import shutil
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 import yaml
 
@@ -30,7 +31,6 @@ from iris.config import find_project_root
 PROJECTS_DIRNAME = "projects"
 TEMPLATE_NAME = "TEMPLATE"
 ACTIVE_POINTER_REL = Path(".iris") / "active_project"
-HISTORY_FILENAME = "claude_history.md"
 CONFIG_FILENAME = "claude_config.yaml"
 REPORT_FILENAME = "report.md"
 CACHE_DIRNAME = ".cache"
@@ -40,16 +40,6 @@ CLAUDE_REFS_DIRNAME = "claude_references"
 
 _NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
-HISTORY_SECTIONS: tuple[str, ...] = (
-    "Goals",
-    "Open Questions",
-    "Decisions",
-    "Operations Run",
-    "Plots Generated",
-    "References Added",
-    "Next Steps",
-)
-
 
 # -- data classes -----------------------------------------------------------
 
@@ -57,13 +47,13 @@ HISTORY_SECTIONS: tuple[str, ...] = (
 @dataclass(frozen=True)
 class ProjectInfo:
     """Summary row for ``iris project list``."""
+
     name: str
     path: Path
-    created_at: Optional[str]
-    description: Optional[str]
+    created_at: str | None
+    description: str | None
     n_references: int
     n_outputs: int
-    last_history_entry: Optional[str]
 
 
 # -- path helpers -----------------------------------------------------------
@@ -104,7 +94,7 @@ def project_cache_dir(project_path: Path) -> Path:
 # -- active project ---------------------------------------------------------
 
 
-def resolve_active_project() -> Optional[Path]:
+def resolve_active_project() -> Path | None:
     """Return the absolute path of the active project, or ``None`` if none set.
 
     Reads ``.iris/active_project`` and validates the named project still
@@ -157,7 +147,7 @@ def close_project() -> None:
 # -- lifecycle --------------------------------------------------------------
 
 
-def create_project(name: str, description: Optional[str] = None) -> Path:
+def create_project(name: str, description: str | None = None) -> Path:
     """Create ``projects/<name>/`` by copying TEMPLATE. Returns the new path.
 
     Raises FileExistsError if the project already exists. Validates the name
@@ -171,9 +161,7 @@ def create_project(name: str, description: Optional[str] = None) -> Path:
     projects = project_root()
     template = projects / TEMPLATE_NAME
     if not template.is_dir():
-        raise FileNotFoundError(
-            f"TEMPLATE missing at {template}; cannot create new projects"
-        )
+        raise FileNotFoundError(f"TEMPLATE missing at {template}; cannot create new projects")
 
     dest = projects / name
     if dest.exists():
@@ -181,20 +169,24 @@ def create_project(name: str, description: Optional[str] = None) -> Path:
 
     shutil.copytree(template, dest)
 
+    # Initialize the L1/L3 SQLite stores and ensure the L2 digests dir exists.
+    # Schemas live in code (not shipped as binary TEMPLATE files) so migrations
+    # are sane. See projects/ledger.py, knowledge.py, digest.py.
+    from . import digest as _digest
+    from . import knowledge as _knowledge
+    from . import ledger as _ledger
+
+    _ledger.init_ledger(dest)
+    _knowledge.init_knowledge(dest)
+    _digest.digests_dir(dest)
+
     # Fill in the new project's claude_config.yaml
     cfg_path = dest / CONFIG_FILENAME
     cfg = _load_yaml_or_empty(cfg_path)
     cfg["name"] = name
     cfg["description"] = description
-    cfg["created_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cfg["created_at"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     _dump_yaml(cfg_path, cfg)
-
-    # Stamp the history file header so the "Last updated" is meaningful.
-    history_path = dest / HISTORY_FILENAME
-    if history_path.is_file():
-        text = history_path.read_text(encoding="utf-8")
-        text = text.replace("_Last updated: never_", f"_Last updated: {cfg['created_at']}_")
-        history_path.write_text(text, encoding="utf-8")
 
     return dest
 
@@ -229,61 +221,6 @@ def get_project_config(name_or_path: str | Path) -> dict:
     return _load_yaml_or_empty(cfg_path)
 
 
-def append_history(
-    project_path: Path,
-    section: str,
-    bullets: Iterable[str],
-) -> None:
-    """Append bullets to a fixed section of ``claude_history.md``.
-
-    Each bullet is prefixed with the current ISO date. Raises ValueError if
-    ``section`` is not one of :data:`HISTORY_SECTIONS` (no silent drift).
-    """
-    if section not in HISTORY_SECTIONS:
-        raise ValueError(
-            f"unknown history section {section!r}; must be one of {HISTORY_SECTIONS}"
-        )
-    history_path = project_path / HISTORY_FILENAME
-    if not history_path.is_file():
-        raise FileNotFoundError(f"history file missing: {history_path}")
-
-    bullets = [b.strip() for b in bullets if b and b.strip()]
-    if not bullets:
-        return
-
-    date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    new_lines = [f"- {date} - {b}" for b in bullets]
-
-    text = history_path.read_text(encoding="utf-8")
-    lines = text.splitlines()
-
-    # Find the target section heading; insert bullets immediately after it
-    # (before any existing content so the most recent bullets float to the top).
-    target = f"## {section}"
-    for i, line in enumerate(lines):
-        if line.strip() == target:
-            insert_at = i + 1
-            # Skip one blank line after the heading if present (pure aesthetic)
-            if insert_at < len(lines) and lines[insert_at].strip() == "":
-                insert_at += 1
-            lines[insert_at:insert_at] = new_lines
-            break
-    else:
-        raise ValueError(
-            f"section heading '{target}' not found in {history_path}; "
-            f"history file may be corrupted"
-        )
-
-    # Update the "Last updated" header
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    for i, line in enumerate(lines):
-        if line.startswith("_Last updated:"):
-            lines[i] = f"_Last updated: {now}_"
-            break
-
-    history_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
 # -- plot-level dedup cache -------------------------------------------------
 
 import json as _json
@@ -292,13 +229,14 @@ import json as _json
 @dataclass(frozen=True)
 class CachedPlot:
     """A plot that already exists in the project output and matches a query."""
-    plot_path: Path             # e.g. projects/<name>/output/.../plot_001_*.png
-    sidecar_path: Path          # the .json next to it
-    session_dir: Path           # the parent session directory
-    dsl: str                    # the DSL string recorded in the sidecar
+
+    plot_path: Path  # e.g. projects/<name>/output/.../plot_001_*.png
+    sidecar_path: Path  # the .json next to it
+    session_dir: Path  # the parent session directory
+    dsl: str  # the DSL string recorded in the sidecar
     window_ms: tuple[float, float] | None
-    timestamp: str              # sidecar's "timestamp" field
-    ops: list                   # the sidecar's expanded ops list (for display)
+    timestamp: str  # sidecar's "timestamp" field
+    ops: list  # the sidecar's expanded ops list (for display)
 
 
 def _file_fingerprints_for_paths(paths_cfg: dict) -> dict[str, dict]:
@@ -450,19 +388,21 @@ def find_cached_plots(
         if not plot_path.is_file():
             continue
 
-        matches.append(CachedPlot(
-            plot_path=plot_path,
-            sidecar_path=sidecar,
-            session_dir=sidecar.parent,
-            dsl=data["dsl"],
-            window_ms=(
-                tuple(data["window_ms"])
-                if isinstance(data.get("window_ms"), (list, tuple))
-                else data.get("window_ms")
-            ),
-            timestamp=data.get("timestamp", ""),
-            ops=data.get("ops") or [],
-        ))
+        matches.append(
+            CachedPlot(
+                plot_path=plot_path,
+                sidecar_path=sidecar,
+                session_dir=sidecar.parent,
+                dsl=data["dsl"],
+                window_ms=(
+                    tuple(data["window_ms"])
+                    if isinstance(data.get("window_ms"), (list, tuple))
+                    else data.get("window_ms")
+                ),
+                timestamp=data.get("timestamp", ""),
+                ops=data.get("ops") or [],
+            )
+        )
 
     # Newest first (by sidecar timestamp, falling back to mtime)
     matches.sort(
@@ -483,8 +423,8 @@ def add_reference(
     url_or_path: str,
     source: str,
     summary: str,
-    tags: Optional[list[str]] = None,
-    title: Optional[str] = None,
+    tags: list[str] | None = None,
+    title: str | None = None,
 ) -> Path:
     """Record a reference in one of the project's references directories.
 
@@ -501,15 +441,13 @@ def add_reference(
     sources, the sidecar for user sources).
     """
     if source not in _REFERENCE_SOURCES:
-        raise ValueError(
-            f"source must be one of {_REFERENCE_SOURCES}, got {source!r}"
-        )
+        raise ValueError(f"source must be one of {_REFERENCE_SOURCES}, got {source!r}")
     project_path = Path(project_path)
     if not project_path.is_dir():
         raise FileNotFoundError(f"project directory not found: {project_path}")
 
     tags = list(tags) if tags else []
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     if source == "user":
         # Locate the file the user dropped into user_references/
@@ -598,15 +536,17 @@ def list_references(project_path: Path) -> list[dict]:
             sidecar = f.with_suffix(f.suffix + ".ref.md")
             if sidecar in seen_sidecars:
                 continue
-            records.append({
-                "path": str(f),
-                "source": "user",
-                "title": f.stem,
-                "file": f.name,
-                "added_at": None,
-                "tags": [],
-                "summary": "(no sidecar metadata)",
-            })
+            records.append(
+                {
+                    "path": str(f),
+                    "source": "user",
+                    "title": f.stem,
+                    "file": f.name,
+                    "added_at": None,
+                    "tags": [],
+                    "summary": "(no sidecar metadata)",
+                }
+            )
 
     return records
 
@@ -616,9 +556,7 @@ def list_references(project_path: Path) -> list[dict]:
 
 def _validate_name(name: str) -> None:
     if not isinstance(name, str) or not _NAME_RE.match(name):
-        raise ValueError(
-            f"invalid project name {name!r}; must match [a-zA-Z0-9_-]{{1,64}}"
-        )
+        raise ValueError(f"invalid project name {name!r}; must match [a-zA-Z0-9_-]{{1,64}}")
 
 
 def _describe_project(path: Path) -> ProjectInfo:
@@ -631,16 +569,9 @@ def _describe_project(path: Path) -> ProjectInfo:
     output = path / OUTPUT_DIRNAME
     n_outputs = 0
     if output.is_dir():
-        n_outputs = sum(1 for _ in output.rglob("plot_*.png")) + \
-                    sum(1 for _ in output.rglob("plot_*.pdf"))
-
-    last_entry: Optional[str] = None
-    history = path / HISTORY_FILENAME
-    if history.is_file():
-        for line in history.read_text(encoding="utf-8").splitlines():
-            if line.startswith("_Last updated:"):
-                last_entry = line.strip("_").replace("Last updated:", "").strip()
-                break
+        n_outputs = sum(1 for _ in output.rglob("plot_*.png")) + sum(
+            1 for _ in output.rglob("plot_*.pdf")
+        )
 
     return ProjectInfo(
         name=path.name,
@@ -649,7 +580,6 @@ def _describe_project(path: Path) -> ProjectInfo:
         description=cfg.get("description"),
         n_references=n_refs,
         n_outputs=n_outputs,
-        last_history_entry=last_entry,
     )
 
 
@@ -657,7 +587,8 @@ def _count_files(directory: Path) -> int:
     if not directory.is_dir():
         return 0
     return sum(
-        1 for p in directory.rglob("*")
+        1
+        for p in directory.rglob("*")
         if p.is_file() and p.name != ".gitkeep" and not p.name.endswith(".ref.md")
     )
 

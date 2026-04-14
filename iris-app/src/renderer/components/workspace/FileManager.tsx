@@ -7,7 +7,8 @@ import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { ScrollArea } from '../ui/scroll-area'
 import { cn } from '../../lib/utils'
-import type { FileNode } from '../../types'
+import type { FileNode, UploadedProfile } from '../../types'
+import { ProfileConfirmation } from './ProfileConfirmation'
 
 export function FileManager() {
   const activeProject = useProjectStore((s) => s.activeProject)
@@ -20,6 +21,8 @@ export function FileManager() {
   const [loadingTree, setLoadingTree] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [pendingProfiles, setPendingProfiles] = useState<UploadedProfile[]>([])
+  const [showProfile, setShowProfile] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -43,8 +46,13 @@ export function FileManager() {
     if (!fileList || !activeProject) return
     setUploading(true)
     try {
-      await api.projectUpload(activeProject, fileList)
+      const result = await api.projectUpload(activeProject, fileList)
       await loadTree()
+      const withProfile = result.profiles.filter((p) => p.profile)
+      if (withProfile.length > 0) {
+        setPendingProfiles(result.profiles)
+        setShowProfile(true)
+      }
     } catch (err) {
       console.error('Upload failed:', err)
     }
@@ -77,6 +85,15 @@ export function FileManager() {
       onDrop={handleDrop}
     >
       <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => handleUpload(e.target.files)} />
+
+      {activeProject && (
+        <ProfileConfirmation
+          open={showProfile}
+          onClose={() => setShowProfile(false)}
+          projectName={activeProject}
+          uploaded={pendingProfiles}
+        />
+      )}
 
       {/* Drag overlay */}
       {dragOver && (

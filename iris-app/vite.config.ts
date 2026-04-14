@@ -7,14 +7,14 @@ export default defineConfig({
   root: 'src/renderer',
   publicDir: false,
   server: {
-    port: 5173,
+    port: 4173,
     proxy: {
-      '/api': 'http://localhost:3001',
+      '/api': 'http://localhost:4001',
       '/ws': {
-        target: 'ws://localhost:3001',
+        target: 'ws://localhost:4001',
         ws: true
       },
-      '/plots': 'http://localhost:3001'
+      '/plots': 'http://localhost:4001'
     }
   },
   build: {

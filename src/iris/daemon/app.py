@@ -74,12 +74,14 @@ from iris.daemon.routes.config import router as config_router  # noqa: E402
 from iris.daemon.routes.ops import router as ops_router  # noqa: E402
 from iris.daemon.routes.sessions import router as sessions_router  # noqa: E402
 from iris.daemon.routes.pipeline import router as pipeline_router  # noqa: E402
+from iris.daemon.routes.memory import router as memory_router  # noqa: E402
 
 app.include_router(projects_router, prefix="/api")
 app.include_router(config_router, prefix="/api")
 app.include_router(ops_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
 app.include_router(pipeline_router, prefix="/api")
+app.include_router(memory_router, prefix="/api")
 
 
 @app.get("/health")

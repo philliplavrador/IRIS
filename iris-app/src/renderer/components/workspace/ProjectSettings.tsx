@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Pencil, Trash2, Download, MessageSquareOff, FileCode2,
-  Brain, Save, Loader2, Check, AlertTriangle, FolderOpen
+  Save, Loader2, Check, AlertTriangle, FolderOpen
 } from 'lucide-react'
 import { Dialog, DialogHeader, DialogTitle, DialogClose, DialogBody } from '../ui/dialog'
 import { Button } from '../ui/button'
@@ -38,12 +38,6 @@ export function ProjectSettings({ open, onOpenChange }: ProjectSettingsProps) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  // Memory
-  const [memory, setMemory] = useState('')
-  const [memoryLoaded, setMemoryLoaded] = useState(false)
-  const [memorySaving, setMemorySaving] = useState(false)
-  const [memorySaved, setMemorySaved] = useState(false)
-
   // Custom ops
   const [customOps, setCustomOps] = useState<string[]>([])
   const [selectedOp, setSelectedOp] = useState<string | null>(null)
@@ -61,7 +55,6 @@ export function ProjectSettings({ open, onOpenChange }: ProjectSettingsProps) {
   useEffect(() => {
     if (!open || !activeProject) return
     setConfigLoaded(false)
-    setMemoryLoaded(false)
     setRenameValue(activeProject)
 
     api.projectInfo(activeProject).then((raw) => {
@@ -81,19 +74,13 @@ export function ProjectSettings({ open, onOpenChange }: ProjectSettingsProps) {
   // Load tab-specific data lazily
   useEffect(() => {
     if (!open || !activeProject) return
-    if (tab === 'memory' && !memoryLoaded) {
-      api.projectMemory(activeProject).then((content) => {
-        setMemory(content)
-        setMemoryLoaded(true)
-      })
-    }
     if (tab === 'ops') {
       api.projectCustomOps(activeProject).then(setCustomOps)
     }
     if (tab === 'files') {
       api.projectFiles(activeProject).then(setFiles)
     }
-  }, [open, activeProject, tab, memoryLoaded])
+  }, [open, activeProject, tab])
 
   const handleSaveConfig = useCallback(async () => {
     if (!activeProject) return
@@ -111,15 +98,6 @@ export function ProjectSettings({ open, onOpenChange }: ProjectSettingsProps) {
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }, [activeProject, renameValue, description, agentNotes, setActiveProject])
-
-  const handleSaveMemory = useCallback(async () => {
-    if (!activeProject) return
-    setMemorySaving(true)
-    await api.projectMemorySave(activeProject, memory)
-    setMemorySaving(false)
-    setMemorySaved(true)
-    setTimeout(() => setMemorySaved(false), 2000)
-  }, [activeProject, memory])
 
   const handleClearConversations = useCallback(async () => {
     if (!activeProject) return
@@ -183,7 +161,6 @@ export function ProjectSettings({ open, onOpenChange }: ProjectSettingsProps) {
             <TabsList className="w-full">
               <TabsTrigger value="general" className="flex-1 text-xs">General</TabsTrigger>
               <TabsTrigger value="files" className="flex-1 text-xs">Files</TabsTrigger>
-              <TabsTrigger value="memory" className="flex-1 text-xs">Memory</TabsTrigger>
               <TabsTrigger value="ops" className="flex-1 text-xs">Ops</TabsTrigger>
             </TabsList>
           </div>
@@ -280,38 +257,6 @@ export function ProjectSettings({ open, onOpenChange }: ProjectSettingsProps) {
                     </Button>
                   </div>
                 ))}
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Memory tab */}
-          <TabsContent value="memory" className="px-6 py-4 space-y-3 overflow-y-auto">
-            <p className="text-xs text-muted-foreground">
-              Data profiles, learned facts, and analysis state. The AI reads this on every prompt.
-            </p>
-            {!memoryLoaded ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading...
-              </div>
-            ) : memory ? (
-              <>
-                <textarea
-                  className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                  rows={14}
-                  value={memory}
-                  onChange={(e) => setMemory(e.target.value)}
-                />
-                <div className="flex justify-end">
-                  <Button size="sm" onClick={handleSaveMemory} disabled={memorySaving}>
-                    {memorySaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : memorySaved ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
-                    {memorySaving ? 'Saving...' : memorySaved ? 'Saved' : 'Save memory'}
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <div className="text-sm text-muted-foreground py-8 text-center">
-                <Brain className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                No memory yet. The AI will populate this as it learns about your data.
               </div>
             )}
           </TabsContent>

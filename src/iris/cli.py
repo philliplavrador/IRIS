@@ -157,30 +157,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_proj_info.set_defaults(func=cmd_project_info)
 
-    p_proj_history = sub_project.add_parser(
-        "history", help="Append to the active project's claude_history.md"
-    )
-    sub_history = p_proj_history.add_subparsers(dest="history_cmd", metavar="<subcmd>")
-    p_history_add = sub_history.add_parser("add", help="Append bullets to a history section")
-    p_history_add.add_argument(
-        "--section",
-        required=True,
-        choices=list(_projects.HISTORY_SECTIONS),
-        help="Target section heading (one of: %(choices)s)",
-    )
-    p_history_add.add_argument(
-        "--bullet",
-        action="append",
-        required=True,
-        help="Bullet text (can be passed multiple times for multiple bullets)",
-    )
-    p_history_add.add_argument(
-        "--project",
-        default=None,
-        help="Project name (default: active project)",
-    )
-    p_history_add.set_defaults(func=cmd_project_history_add)
-
     p_proj_ref = sub_project.add_parser("reference", help="Manage references stored in a project")
     sub_ref = p_proj_ref.add_subparsers(dest="ref_cmd", metavar="<subcmd>")
 
@@ -282,7 +258,7 @@ def cmd_start(_args: argparse.Namespace) -> int:
     print()
     try:
         proc = subprocess.Popen(
-            ["npm", "run", "dev:web"],
+            ["npm", "run", "dev"],
             cwd=str(app_dir),
             shell=(sys.platform == "win32"),
         )
@@ -706,7 +682,6 @@ def cmd_project_info(args: argparse.Namespace) -> int:
     print(f"description:  {info.description or '(none)'}")
     print(f"references:   {info.n_references}")
     print(f"plot files:   {info.n_outputs}")
-    print(f"history:      {info.last_history_entry or '(empty)'}")
     if cfg.get("agent_notes"):
         print(f"agent notes:  {cfg['agent_notes']}")
     return 0
@@ -728,15 +703,6 @@ def _resolve_project_arg(name: str | None) -> Path | None:
         )
         return None
     return active
-
-
-def cmd_project_history_add(args: argparse.Namespace) -> int:
-    path = _resolve_project_arg(args.project)
-    if path is None:
-        return 1
-    _projects.append_history(path, args.section, args.bullet)
-    print(f"{path.name}: added {len(args.bullet)} bullet(s) to ## {args.section}")
-    return 0
 
 
 def cmd_project_reference_add(args: argparse.Namespace) -> int:

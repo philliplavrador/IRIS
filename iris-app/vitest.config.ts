@@ -7,7 +7,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/renderer/__tests__/setup.ts'],
-    include: ['src/renderer/__tests__/**/*.test.{ts,tsx}'],
+    include: [
+      'src/renderer/__tests__/**/*.test.{ts,tsx}',
+      'server/__tests__/**/*.test.{ts,tsx}',
+    ],
     coverage: {
       provider: 'v8',
       include: ['src/renderer/**/*.{ts,tsx}'],
