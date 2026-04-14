@@ -94,6 +94,10 @@ spikelab reference/
 spikelab-reference/
 SpikeLab-main/
 .playwright-mcp/
+iris-app/test-results/
+
+# Claude Code local state
+.claude/scheduled_tasks.lock
 
 # Misc
 nul
