@@ -14,6 +14,11 @@ Endpoints (all mounted under ``/api`` by ``daemon.app``)::
     POST /memory/sessions/start           Open a memory-layer session
     POST /memory/sessions/{sid}/end       Close a session + stamp summary
     GET  /memory/sessions/{sid}           Fetch a session row
+    POST /memory/messages                 Append one chat message
+    GET  /memory/messages                 List messages for a session
+    GET  /memory/messages/search          FTS5 BM25 search across a project
+    POST /memory/tool_calls               Append one tool-call row
+    PATCH /memory/tool_calls/{id}/output_artifact  Attach artifact id to a tool-call
 
 All routes resolve the **active** project via
 :func:`iris.projects.resolve_active_project`. There is no ``?project=``
@@ -35,8 +40,10 @@ from pydantic import BaseModel, Field
 
 from iris.projects import db as _db
 from iris.projects import events as _events
+from iris.projects import messages as _messages
 from iris.projects import resolve_active_project
 from iris.projects import sessions as _sessions
+from iris.projects import tool_calls as _tool_calls
 
 router = APIRouter(tags=["memory"])
 
@@ -151,6 +158,30 @@ class StartSessionRequest(BaseModel):
 
 class EndSessionRequest(BaseModel):
     summary: str
+
+
+class AppendMessageRequest(BaseModel):
+    session_id: str = Field(min_length=1)
+    role: str = Field(min_length=1)
+    content: str
+    event_id: str | None = None
+    token_count: int | None = None
+
+
+class AppendToolCallRequest(BaseModel):
+    session_id: str = Field(min_length=1)
+    tool_name: str = Field(min_length=1)
+    input: Any
+    success: bool
+    event_id: str | None = None
+    output_summary: str | None = None
+    output_artifact_id: str | None = None
+    error: str | None = None
+    execution_time_ms: int | None = None
+
+
+class AttachArtifactRequest(BaseModel):
+    artifact_id: str = Field(min_length=1)
 
 
 # -- events -----------------------------------------------------------------
@@ -278,5 +309,112 @@ async def get_session(session_id: str) -> dict[str, Any]:
             return {"data": _sessions.get_session(conn, session_id)}
         except LookupError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
+    finally:
+        conn.close()
+
+
+# -- messages ---------------------------------------------------------------
+
+
+@router.post("/memory/messages")
+async def append_message(req: AppendMessageRequest) -> dict[str, Any]:
+    """Append one chat message to the active project."""
+    conn, _ = _open()
+    try:
+        try:
+            message_id = _messages.append_message(
+                conn,
+                session_id=req.session_id,
+                role=req.role,
+                content=req.content,
+                event_id=req.event_id,
+                token_count=req.token_count,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": {"message_id": message_id}}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/messages")
+async def list_messages(
+    session_id: str = Query(..., min_length=1),
+    limit: int = Query(default=100, ge=1, le=10_000),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    """List messages for a session in chronological order."""
+    conn, _ = _open()
+    try:
+        rows = conn.execute(
+            "SELECT message_id, session_id, event_id, role, content, ts, token_count "
+            "FROM messages WHERE session_id = ? "
+            "ORDER BY rowid ASC LIMIT ? OFFSET ?",
+            (session_id, limit, offset),
+        ).fetchall()
+        return {"data": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/messages/search")
+async def search_messages(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(default=20, ge=1, le=500),
+) -> dict[str, Any]:
+    """FTS5 BM25 search over messages in the active project."""
+    conn, project_id = _open()
+    try:
+        try:
+            hits = _messages.search(conn, project_id=project_id, query=q, limit=limit)
+        except sqlite3.OperationalError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": hits}
+    finally:
+        conn.close()
+
+
+# -- tool_calls -------------------------------------------------------------
+
+
+@router.post("/memory/tool_calls")
+async def append_tool_call(req: AppendToolCallRequest) -> dict[str, Any]:
+    """Append one tool-call row to the active project."""
+    conn, _ = _open()
+    try:
+        try:
+            tool_call_id = _tool_calls.append_tool_call(
+                conn,
+                session_id=req.session_id,
+                tool_name=req.tool_name,
+                input=req.input,
+                success=req.success,
+                event_id=req.event_id,
+                output_summary=req.output_summary,
+                output_artifact_id=req.output_artifact_id,
+                error=req.error,
+                execution_time_ms=req.execution_time_ms,
+            )
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": {"tool_call_id": tool_call_id}}
+    finally:
+        conn.close()
+
+
+@router.patch("/memory/tool_calls/{tool_call_id}/output_artifact")
+async def attach_tool_call_artifact(
+    tool_call_id: str, req: AttachArtifactRequest
+) -> dict[str, Any]:
+    """Late-bind an artifact id onto a stored tool-call row."""
+    conn, _ = _open()
+    try:
+        try:
+            _tool_calls.attach_output_artifact(conn, tool_call_id, req.artifact_id)
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return {"data": {"tool_call_id": tool_call_id, "artifact_id": req.artifact_id}}
     finally:
         conn.close()

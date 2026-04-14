@@ -9,7 +9,7 @@
  * modules land and the frontend re-adopts them.
  */
 import type { Express, Request, Response } from 'express'
-import { daemonGet, daemonPost } from '../services/daemon-client.js'
+import { daemonGet, daemonPatch, daemonPost } from '../services/daemon-client.js'
 
 function forwardError(res: Response, e: unknown): void {
   const msg = e instanceof Error ? e.message : String(e)
@@ -79,4 +79,57 @@ export function registerMemoryRoutes(app: Express): void {
       forwardError(res, e)
     }
   })
+
+  // -- messages --------------------------------------------------------
+  app.post('/api/memory/messages', async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost('/api/memory/messages', req.body ?? {}))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.get('/api/memory/messages', async (req: Request, res: Response) => {
+    try {
+      const qs = new URLSearchParams(req.query as Record<string, string>).toString()
+      res.json(await daemonGet(`/api/memory/messages${qs ? `?${qs}` : ''}`))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.get('/api/memory/messages/search', async (req: Request, res: Response) => {
+    try {
+      const qs = new URLSearchParams(req.query as Record<string, string>).toString()
+      res.json(await daemonGet(`/api/memory/messages/search${qs ? `?${qs}` : ''}`))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  // -- tool_calls ------------------------------------------------------
+  app.post('/api/memory/tool_calls', async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost('/api/memory/tool_calls', req.body ?? {}))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.patch(
+    '/api/memory/tool_calls/:toolCallId/output_artifact',
+    async (req: Request, res: Response) => {
+      try {
+        const id = String(req.params.toolCallId)
+        res.json(
+          await daemonPatch(
+            `/api/memory/tool_calls/${encodeURIComponent(id)}/output_artifact`,
+            req.body ?? {},
+          ),
+        )
+      } catch (e) {
+        forwardError(res, e)
+      }
+    },
+  )
 }

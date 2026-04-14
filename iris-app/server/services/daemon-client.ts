@@ -27,6 +27,19 @@ export async function daemonPost<T = unknown>(path: string, body: unknown): Prom
   return res.json() as Promise<T>
 }
 
+export async function daemonPatch<T = unknown>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${DAEMON_URL}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Daemon PATCH ${path}: ${res.status} ${text}`)
+  }
+  return res.json() as Promise<T>
+}
+
 export async function daemonDelete<T = unknown>(path: string): Promise<T> {
   const res = await fetch(`${DAEMON_URL}${path}`, { method: 'DELETE' })
   if (!res.ok) {

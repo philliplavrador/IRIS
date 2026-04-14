@@ -559,7 +559,7 @@ Goal: every chat message and tool invocation persists to SQLite with FTS5 search
 
 ---
 
-### [ ] Task 3.3 — Daemon /memory/messages + /memory/tool_calls
+### [x] Task 3.3 — Daemon /memory/messages + /memory/tool_calls
 
 **Phase**: 3 · **Effort**: S · **Blocks**: 3.5
 
