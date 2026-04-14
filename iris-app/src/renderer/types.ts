@@ -11,6 +11,16 @@ export interface PlotInfo {
   path: string
   filename: string
   sidecar: PlotSidecar | null
+  // Optional artifact backing (REVAMP Phase 5). When set, the viewer fetches
+  // bytes via /api/memory/artifacts/<id>/bytes instead of the legacy static
+  // /plots/* path. `path` is still populated for compat + fallback.
+  artifactId?: string | null
+  artifactMetadata?: {
+    type?: string
+    created_at?: string | null
+    run_id?: string | null
+    [k: string]: unknown
+  } | null
 }
 
 export interface PlotSidecar {

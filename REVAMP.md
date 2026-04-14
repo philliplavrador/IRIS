@@ -808,7 +808,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 ---
 
-### [ ] Task 5.5 — Frontend artifact rendering + Phase 5 E2E
+### [x] Task 5.5 — Frontend artifact rendering + Phase 5 E2E
 
 **Phase**: 5 · **Effort**: M · **Blocks**: Phase 6
 

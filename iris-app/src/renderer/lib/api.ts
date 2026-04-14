@@ -368,6 +368,44 @@ export const api = {
     return res.json()
   },
 
+  // -- Artifacts (REVAMP Phase 5) --------------------------------------
+  // TODO: tighten the `any` once the daemon settles on a final Artifact shape
+  // (REVAMP §7 artifacts). Schema is {id, type, sha256, created_at, run_id, metadata, ...}.
+  listArtifacts: async (
+    opts: { type?: string; runId?: string; limit?: number } = {},
+  ): Promise<{ artifacts: any[] }> => {
+    const qs = new URLSearchParams()
+    if (opts.type) qs.set('type', opts.type)
+    if (opts.runId) qs.set('run_id', opts.runId)
+    if (opts.limit) qs.set('limit', String(opts.limit))
+    const url = `${BASE}/api/memory/artifacts${qs.toString() ? `?${qs.toString()}` : ''}`
+    const res = await fetch(url)
+    if (!res.ok) return { artifacts: [] }
+    const data = await res.json()
+    const rows = Array.isArray(data) ? data : (data.data ?? data.artifacts ?? [])
+    return { artifacts: rows }
+  },
+
+  getArtifactMetadata: async (id: string): Promise<any | null> => {
+    const res = await fetch(
+      `${BASE}/api/memory/artifacts/${encodeURIComponent(id)}`,
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.data ?? data
+  },
+
+  getArtifactBytesUrl: (id: string): string =>
+    `${BASE}/api/memory/artifacts/${encodeURIComponent(id)}/bytes`,
+
+  softDeleteArtifact: async (id: string): Promise<boolean> => {
+    const res = await fetch(
+      `${BASE}/api/memory/artifacts/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    )
+    return res.ok
+  },
+
   // Export URL
   projectExportUrl: (name: string): string =>
     `${BASE}/api/projects/export?name=${encodeURIComponent(name)}`,

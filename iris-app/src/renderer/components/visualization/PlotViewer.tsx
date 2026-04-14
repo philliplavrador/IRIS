@@ -7,10 +7,47 @@ import { ScrollArea } from '../ui/scroll-area'
 import { cn } from '../../lib/utils'
 import type { PlotInfo } from '../../types'
 
-export function PlotViewer() {
+// Prefer artifact bytes URL when a plot row has an artifactId; otherwise fall
+// back to the legacy static /plots/<rel> URL served by Express.
+function plotSrc(plot: PlotInfo): string {
+  if (plot.artifactId) return api.getArtifactBytesUrl(plot.artifactId)
+  return api.plotUrl(plot.path)
+}
+
+interface PlotViewerProps {
+  // When rendering a single artifact outside the workspace store flow
+  // (e.g. from a memory entry link), pass its id directly. The viewer
+  // synthesizes a PlotInfo and renders the artifact bytes.
+  artifactId?: string
+}
+
+export function PlotViewer({ artifactId }: PlotViewerProps = {}) {
   const currentPlot = useWorkspaceStore((s) => s.currentPlot)
   const sessionPlots = useWorkspaceStore((s) => s.sessionPlots)
   const setCurrentPlot = useWorkspaceStore((s) => s.setCurrentPlot)
+
+  // Direct-artifact mode: skip the store and render the one artifact.
+  if (artifactId) {
+    const synthetic: PlotInfo = {
+      path: '',
+      filename: artifactId,
+      sidecar: null,
+      artifactId,
+    }
+    return (
+      <div className="h-full flex flex-col">
+        <div className="flex items-center gap-2 px-5 py-3 border-b shrink-0">
+          <ImageIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-xs font-mono text-muted-foreground truncate">
+            artifact {artifactId.slice(0, 12)}
+          </span>
+        </div>
+        <div className="flex-1 min-h-0 flex items-center justify-center overflow-auto p-6 bg-muted/20">
+          <MainPlotImage src={plotSrc(synthetic)} alt={artifactId} />
+        </div>
+      </div>
+    )
+  }
 
   if (!currentPlot && sessionPlots.length === 0) {
     return (
@@ -40,7 +77,7 @@ export function PlotViewer() {
     )
   }
 
-  const imgUrl = api.plotUrl(currentPlot!.path)
+  const imgUrl = plotSrc(currentPlot!)
 
   return (
     <div className="h-full flex flex-col">
@@ -51,6 +88,12 @@ export function PlotViewer() {
           <span className="text-xs font-mono text-muted-foreground truncate">
             {currentPlot!.filename}
           </span>
+          {currentPlot!.artifactId && (
+            <ArtifactChip
+              artifactId={currentPlot!.artifactId}
+              metadata={currentPlot!.artifactMetadata ?? null}
+            />
+          )}
         </div>
         {sessionPlots.length > 1 && (
           <button
@@ -89,7 +132,7 @@ export function PlotViewer() {
                 title={plot.filename}
               >
                 <img
-                  src={api.plotUrl(plot.path)}
+                  src={plotSrc(plot)}
                   alt={plot.filename}
                   className="w-full h-full object-cover bg-muted"
                   loading="lazy"
@@ -113,7 +156,7 @@ function GalleryPlot({ plot, setCurrentPlot }: { plot: PlotInfo; setCurrentPlot:
     >
       {!loaded && <div className="w-full aspect-[4/3] skeleton" />}
       <img
-        src={api.plotUrl(plot.path)}
+        src={plotSrc(plot)}
         alt={plot.filename}
         className={cn(
           "w-full aspect-[4/3] object-cover bg-muted group-hover:brightness-105 transition-all duration-200",
@@ -147,6 +190,27 @@ function MainPlotImage({ src, alt }: { src: string; alt: string }) {
         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
       />
     </>
+  )
+}
+
+function ArtifactChip({
+  artifactId,
+  metadata,
+}: {
+  artifactId: string
+  metadata: PlotInfo['artifactMetadata']
+}) {
+  const createdAt = metadata?.created_at
+  const runId = metadata?.run_id
+  return (
+    <span
+      className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[10px] font-mono text-muted-foreground"
+      title={`artifact ${artifactId}`}
+    >
+      <span>art:{artifactId.slice(0, 8)}</span>
+      {runId && <span>run:{String(runId).slice(0, 8)}</span>}
+      {createdAt && <span>{new Date(createdAt).toLocaleString()}</span>}
+    </span>
   )
 }
 
