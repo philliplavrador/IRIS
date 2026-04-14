@@ -53,7 +53,7 @@ cd iris-app && npm run dev   # daemon on 4002, server on 4001
 
 Goal: clear every file destined for deletion before any rewrite begins. Build will be partially broken between Phase 0 and Phase 1; that is intentional.
 
-### [ ] Task 0.1 — Delete legacy test projects
+### [x] Task 0.1 — Delete legacy test projects
 
 **Phase**: 0 · **Effort**: S · **Blocks**: none
 
