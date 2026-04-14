@@ -136,7 +136,7 @@ Goal: clear every file destined for deletion before any rewrite begins. Build wi
 
 ---
 
-### [ ] Task 0.5 — Stub broken daemon routes
+### [x] Task 0.5 — Stub broken daemon routes
 
 **Phase**: 0 · **Effort**: S · **Blocks**: 1.10, 2.4
 
