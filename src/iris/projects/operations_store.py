@@ -254,7 +254,40 @@ def register(
             },
         )
 
+    _enqueue_operation_embedding(conn, op_id, name, version, docstring)
     return op_id
+
+
+def _enqueue_operation_embedding(
+    conn: sqlite3.Connection,
+    op_id: str,
+    name: str,
+    version: str,
+    docstring: str,
+) -> None:
+    """Best-effort embedding enqueue (REVAMP Task 11.4). No-op if worker idle."""
+    try:
+        from pathlib import Path as _Path
+
+        from iris.projects import embedding_worker as _ew
+
+        db_row = conn.execute("PRAGMA database_list").fetchone()
+        if not db_row or not db_row[2]:
+            return
+        project_path = _Path(db_row[2]).parent
+        text = f"{name} v{version}\n{docstring or ''}".strip()
+        if not text:
+            return
+        _ew.enqueue(
+            _ew.EmbedJob(
+                kind="operation",
+                project_path=project_path,
+                entity_id=op_id,
+                text=text,
+            )
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def find(

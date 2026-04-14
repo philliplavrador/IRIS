@@ -91,7 +91,7 @@ export const api = {
     return res.ok
   },
 
-  projectInfo: async (name?: string): Promise<string | null> => {
+  projectInfo: async (name?: string): Promise<{ description: string; agent_notes: string } | null> => {
     const params = name ? `?name=${encodeURIComponent(name)}` : ''
     const res = await fetch(`${BASE}/api/projects/info${params}`)
     const data = await res.json()
@@ -252,10 +252,9 @@ export const api = {
 
   // -- Behavior dials (autonomy / pushback / memory) -------------------
   projectBehavior: async (name: string): Promise<{
-    yaml: string
     autonomy: string
-    pushback: Record<string, string>
-    memory: Record<string, string>
+    pushback: string
+    memory: { slice_budget_tokens: number }
   }> => {
     const res = await fetch(`${BASE}/api/projects/behavior?name=${encodeURIComponent(name)}`)
     return res.json()
@@ -263,7 +262,7 @@ export const api = {
 
   projectBehaviorSave: async (
     name: string,
-    body: { autonomy?: string; pushback?: Record<string, string>; memory?: Record<string, number | boolean> },
+    body: { autonomy?: string; pushback?: string; memory?: { slice_budget_tokens?: number } },
   ): Promise<boolean> => {
     const res = await fetch(`${BASE}/api/projects/behavior`, {
       method: 'POST',

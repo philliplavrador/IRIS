@@ -57,16 +57,11 @@ export function ProjectSettings({ open, onOpenChange }: ProjectSettingsProps) {
     setConfigLoaded(false)
     setRenameValue(activeProject)
 
-    api.projectInfo(activeProject).then((raw) => {
-      if (!raw) return
-      const parseYamlVal = (key: string) => {
-        const m = raw.match(new RegExp(`${key}:\\s*(.+)`))
-        if (!m) return ''
-        const val = m[1].replace(/#.*/, '').trim()
-        return val === 'null' ? '' : val
-      }
-      setDescription(parseYamlVal('description'))
-      setAgentNotes(parseYamlVal('agent_notes'))
+    api.projectInfo(activeProject).then((info) => {
+      setDescription(info?.description ?? '')
+      setAgentNotes(info?.agent_notes ?? '')
+      setConfigLoaded(true)
+    }).catch(() => {
       setConfigLoaded(true)
     })
   }, [open, activeProject])

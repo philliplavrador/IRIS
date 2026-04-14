@@ -305,6 +305,41 @@ def commit_pending(
             session_id=session_id,
             payload={"memory_id": memory_id, "status": "active", "from_status": "draft"},
         )
+        _enqueue_embedding(conn, memory_id)
+
+
+def _enqueue_embedding(conn: sqlite3.Connection, memory_id: str) -> None:
+    """Fire-and-forget embed hook (REVAMP Task 11.4).
+
+    No-op unless :func:`embedding_worker.start_worker` has been called
+    and the DB path is resolvable — keeping V1 memory paths risk-free.
+    """
+    try:
+        from pathlib import Path as _Path
+
+        from iris.projects import embedding_worker as _ew
+
+        row = conn.execute(
+            "SELECT text FROM memory_entries WHERE memory_id = ?", (memory_id,)
+        ).fetchone()
+        if row is None or not row[0]:
+            return
+        db_file = None
+        db_row = conn.execute("PRAGMA database_list").fetchone()
+        if db_row and db_row[2]:
+            db_file = _Path(db_row[2]).parent
+        if db_file is None:
+            return
+        _ew.enqueue(
+            _ew.EmbedJob(
+                kind="memory_entry",
+                project_path=db_file,
+                entity_id=memory_id,
+                text=str(row[0]),
+            )
+        )
+    except Exception:  # noqa: BLE001 - hot path must never raise
+        pass
 
 
 def discard_pending(conn: sqlite3.Connection, ids: list[str]) -> None:

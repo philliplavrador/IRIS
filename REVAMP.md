@@ -1224,7 +1224,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 11.4 — Background embedding job
+### [x] Task 11.4 — Background embedding job
 
 **Phase**: 11 · **Effort**: M · **Blocks**: 11.5
 

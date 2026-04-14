@@ -8,37 +8,24 @@ import { ScrollArea } from '../ui/scroll-area'
 import { api } from '../../lib/api'
 
 const AUTONOMY_LEVELS = [
+  { value: '', label: 'Inherit', hint: 'Use the global default from ~/.iris/config.' },
   { value: 'low', label: 'Low', hint: 'Reads only — every op, plot, and write is proposed.' },
   { value: 'medium', label: 'Medium', hint: 'Reads + profiling + cache-hit retrieval run freely.' },
   { value: 'high', label: 'High', hint: 'Re-execution of familiar ops runs freely; novel work is still proposed.' },
 ]
 
 const PUSHBACK_LEVELS = [
-  { value: 'light', label: 'Light' },
-  { value: 'balanced', label: 'Balanced' },
-  { value: 'rigorous', label: 'Rigorous' },
-]
-
-const PUSHBACK_DOMAINS: Array<{ key: string; label: string; hint: string }> = [
-  { key: 'statistical', label: 'Statistical', hint: 'Assumptions, sample size, multiple comparisons, test selection.' },
-  { key: 'methodological', label: 'Methodological', hint: 'Pipeline order, parameters, transforms, leakage, aggregation scope.' },
-  { key: 'interpretive', label: 'Interpretive', hint: 'Causal vs. correlational, overgeneralization, domain plausibility.' },
-]
-
-const MEMORY_FIELDS: Array<{ key: string; label: string; kind: 'number' | 'bool' }> = [
-  { key: 'pin_budget_tokens', label: 'Pinned slice budget (tokens)', kind: 'number' },
-  { key: 'goals_active_max', label: 'Max active goals in slice', kind: 'number' },
-  { key: 'digest_retention_days', label: 'Digest retention (days)', kind: 'number' },
-  { key: 'recall_k_default', label: 'Default recall() k', kind: 'number' },
-  { key: 'recall_recency_halflife_days', label: 'Recall recency halflife (days)', kind: 'number' },
-  { key: 'use_user_memory', label: 'Use ~/.iris/user_memory', kind: 'bool' },
+  { value: '', label: 'Inherit', hint: 'Use the global default.' },
+  { value: 'light', label: 'Light', hint: 'Flag only clear blockers.' },
+  { value: 'balanced', label: 'Balanced', hint: 'Raise meaningful statistical, methodological, and interpretive concerns.' },
+  { value: 'rigorous', label: 'Rigorous', hint: 'Challenge assumptions aggressively before running anything novel.' },
 ]
 
 export function BehaviorConfig() {
   const project = useProjectStore((s) => s.activeProject)
-  const [autonomy, setAutonomy] = useState('medium')
-  const [pushback, setPushback] = useState<Record<string, string>>({})
-  const [memory, setMemory] = useState<Record<string, string>>({})
+  const [autonomy, setAutonomy] = useState('')
+  const [pushback, setPushback] = useState('')
+  const [sliceBudget, setSliceBudget] = useState('0')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -46,11 +33,12 @@ export function BehaviorConfig() {
   useEffect(() => {
     if (!project) return
     setLoading(true)
+    setStatus(null)
     api.projectBehavior(project)
       .then((d) => {
-        setAutonomy(d.autonomy)
-        setPushback(d.pushback)
-        setMemory(d.memory)
+        setAutonomy(d?.autonomy ?? '')
+        setPushback(d?.pushback ?? '')
+        setSliceBudget(String(d?.memory?.slice_budget_tokens ?? 0))
       })
       .catch((e) => setStatus(`Load failed: ${e.message}`))
       .finally(() => setLoading(false))
@@ -61,17 +49,9 @@ export function BehaviorConfig() {
     setSaving(true)
     setStatus(null)
     try {
-      const memOut: Record<string, number | boolean> = {}
-      for (const f of MEMORY_FIELDS) {
-        const v = memory[f.key]
-        if (v === undefined) continue
-        if (f.kind === 'bool') memOut[f.key] = v === 'true'
-        else {
-          const n = Number(v)
-          if (!Number.isNaN(n)) memOut[f.key] = n
-        }
-      }
-      const ok = await api.projectBehaviorSave(project, { autonomy, pushback, memory: memOut })
+      const budget = Number(sliceBudget)
+      const memory = Number.isFinite(budget) ? { slice_budget_tokens: budget } : undefined
+      const ok = await api.projectBehaviorSave(project, { autonomy, pushback, memory })
       setStatus(ok ? 'Saved.' : 'Save failed.')
     } catch (e: any) {
       setStatus(`Save failed: ${e.message}`)
@@ -97,10 +77,10 @@ export function BehaviorConfig() {
             <h3 className="text-sm font-semibold">Autonomy</h3>
             <p className="text-xs text-muted-foreground">What IRIS may run without explicit approval.</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {AUTONOMY_LEVELS.map((lv) => (
               <Button
-                key={lv.value}
+                key={lv.value || 'inherit'}
                 variant={autonomy === lv.value ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setAutonomy(lv.value)}
@@ -114,66 +94,42 @@ export function BehaviorConfig() {
           </p>
         </Card>
 
-        <Card className="p-5 space-y-4">
+        <Card className="p-5 space-y-3">
           <div>
             <h3 className="text-sm font-semibold">Pushback</h3>
-            <p className="text-xs text-muted-foreground">How firmly IRIS flags concerns in each domain.</p>
+            <p className="text-xs text-muted-foreground">How firmly IRIS flags statistical, methodological, and interpretive concerns.</p>
           </div>
-          {PUSHBACK_DOMAINS.map((dom) => (
-            <div key={dom.key} className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-medium">{dom.label}</div>
-                  <div className="text-[11px] text-muted-foreground">{dom.hint}</div>
-                </div>
-                <div className="flex gap-1">
-                  {PUSHBACK_LEVELS.map((lv) => (
-                    <Button
-                      key={lv.value}
-                      size="sm"
-                      variant={pushback[dom.key] === lv.value ? 'default' : 'outline'}
-                      onClick={() => setPushback((p) => ({ ...p, [dom.key]: lv.value }))}
-                    >
-                      {lv.label}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
+          <div className="flex flex-wrap gap-2">
+            {PUSHBACK_LEVELS.map((lv) => (
+              <Button
+                key={lv.value || 'inherit'}
+                variant={pushback === lv.value ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setPushback(lv.value)}
+              >
+                {lv.label}
+              </Button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {PUSHBACK_LEVELS.find((l) => l.value === pushback)?.hint}
+          </p>
         </Card>
 
         <Card className="p-5 space-y-3">
           <div>
             <h3 className="text-sm font-semibold">Memory</h3>
-            <p className="text-xs text-muted-foreground">Dials for pinned-slice assembly, retrieval, and archival.</p>
+            <p className="text-xs text-muted-foreground">Pinned-slice budget for the agent's system prompt. 0 inherits the global default.</p>
           </div>
-          {MEMORY_FIELDS.map((f) => (
-            <div key={f.key} className="flex items-center gap-3">
-              <label className="text-xs flex-1">{f.label}</label>
-              {f.kind === 'bool' ? (
-                <div className="flex gap-1">
-                  {['false', 'true'].map((v) => (
-                    <Button
-                      key={v}
-                      size="sm"
-                      variant={(memory[f.key] ?? 'false') === v ? 'default' : 'outline'}
-                      onClick={() => setMemory((m) => ({ ...m, [f.key]: v }))}
-                    >
-                      {v}
-                    </Button>
-                  ))}
-                </div>
-              ) : (
-                <Input
-                  type="number"
-                  value={memory[f.key] ?? ''}
-                  onChange={(e) => setMemory((m) => ({ ...m, [f.key]: e.target.value }))}
-                  className="h-8 text-xs w-32"
-                />
-              )}
-            </div>
-          ))}
+          <div className="flex items-center gap-3">
+            <label className="text-xs flex-1">Slice budget (tokens)</label>
+            <Input
+              type="number"
+              value={sliceBudget}
+              onChange={(e) => setSliceBudget(e.target.value)}
+              className="h-8 text-xs w-32"
+            />
+          </div>
         </Card>
 
         <div className="flex items-center gap-3">

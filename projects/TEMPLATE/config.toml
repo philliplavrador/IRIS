@@ -5,11 +5,12 @@
 [project]
 name = ""
 description = ""
+agent_notes = ""
 
 [behavior]
 # Per-project overrides of global behavior dials.
 autonomy = ""    # "", "low", "medium", "high"
-pushback = ""    # "", "low", "medium", "high"
+pushback = ""    # "", "light", "balanced", "rigorous"
 
 [memory]
 # Per-project overrides of memory dials.

@@ -109,3 +109,36 @@ IRIS pulls context from relevant published work and uses it to interpret unusual
 17 built-in signal-processing operations out of the box (filtering, detection, spectral, cross-modal). Need something bespoke? Ask IRIS in chat — it can author a project-scoped custom op, version it, and wire it into the DSL.
 
 ---
+
+## How IRIS manages memory
+
+IRIS's value comes from remembering, so memory isn't a side feature — it's the core. Each project keeps its own memory, organised across three layers:
+
+| Layer | Where it lives | What it's for |
+|---|---|---|
+| 📒 **SQLite database** | `iris.sqlite` inside the project | The source of truth — every event, message, run, artifact, and memory entry |
+| 📁 **Content-addressed files** | `artifacts/` and `datasets/` | Raw bytes (plots, derived data) keyed by hash for exact reproducibility |
+| 📝 **Curated Markdown** | `memory/*.md` files | The human-readable view — regenerated from SQLite so you can read, diff, and edit in your editor |
+
+### The memory entries themselves
+
+Memory entries are small, typed facts the assistant accumulates as you work:
+
+- **Findings** — "channel 861 shows burst-like firing after minute 8"
+- **Decisions** — "we're treating channels 742 and 861 as the reference pair"
+- **Caveats** — "day-3 sample rate looks off, don't trust it blindly"
+- **Open questions** — "is the bimodal ISI a superburst signature?"
+- **Preferences** — "user wants narrow-band spectrograms, no titles"
+
+Nothing lands in long-term memory silently. IRIS **proposes** entries after a session, you **review and commit** the ones worth keeping, and the rest are discarded — so the workspace stays grounded in things you actually endorsed.
+
+### Why this design
+
+- **Three substrates, one truth.** SQLite is queryable, files are reproducible, Markdown is human-readable. No format has to do all three jobs badly.
+- **Scoped per project.** Context from your neuroscience project doesn't leak into your finance one. Switch projects, switch memory.
+- **Local and inspectable.** Everything is a file on your machine. You can read it, back it up, or delete it — no hidden vendor state.
+- **Curated, not hoarded.** Long-term memory is what you confirmed, not whatever happened to be said in chat. That keeps suggestions sharp over time.
+
+Deeper dive: [`IRIS Memory Restructure.md`](IRIS%20Memory%20Restructure.md) (design spec).
+
+---

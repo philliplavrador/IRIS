@@ -157,12 +157,12 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
     }
   })
 
-  // Behavior dials (autonomy / pushback / memory) — round-trips claude_config.yaml
+  // Behavior dials (autonomy / pushback / memory) — round-trips config.toml
   app.get('/api/projects/behavior', async (req, res) => {
     try {
       const name = req.query.name as string
-      const configRaw = await readFile(`${projectsDir}/${name}/claude_config.yaml`, 'utf-8')
-      res.json({ yaml: configRaw, ...parseBehaviorDials(configRaw) })
+      const toml = await readFile(`${projectsDir}/${name}/config.toml`, 'utf-8')
+      res.json(parseBehaviorDials(toml))
     } catch (err: any) {
       res.status(500).json({ error: err.message })
     }
@@ -173,24 +173,18 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
       const { name, autonomy, pushback, memory } = req.body as {
         name: string
         autonomy?: string
-        pushback?: Record<string, string>
-        memory?: Record<string, number | boolean>
+        pushback?: string
+        memory?: { slice_budget_tokens?: number }
       }
-      const path = `${projectsDir}/${name}/claude_config.yaml`
-      let yaml = await readFile(path, 'utf-8')
-      if (autonomy) yaml = replaceScalar(yaml, 'autonomy', autonomy)
-      if (pushback) {
-        for (const [k, v] of Object.entries(pushback)) {
-          yaml = replaceNested(yaml, 'pushback', k, String(v))
-        }
+      const path = `${projectsDir}/${name}/config.toml`
+      let toml = await readFile(path, 'utf-8')
+      if (autonomy !== undefined) toml = setTomlString(toml, 'behavior', 'autonomy', autonomy)
+      if (pushback !== undefined) toml = setTomlString(toml, 'behavior', 'pushback', pushback)
+      if (memory?.slice_budget_tokens !== undefined) {
+        toml = setTomlNumber(toml, 'memory', 'slice_budget_tokens', memory.slice_budget_tokens)
       }
-      if (memory) {
-        for (const [k, v] of Object.entries(memory)) {
-          yaml = replaceNested(yaml, 'memory', k, String(v))
-        }
-      }
-      await writeFile(path, yaml, 'utf-8')
-      res.json({ ok: true, ...parseBehaviorDials(yaml) })
+      await writeFile(path, toml, 'utf-8')
+      res.json({ ok: true, ...parseBehaviorDials(toml) })
     } catch (err: any) {
       res.status(500).json({ error: err.message })
     }
@@ -200,9 +194,13 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
     try {
       const name = req.query.name as string
       if (!name) { res.json({ info: null }); return }
-      const projectDir = `${projectsDir}/${name}`
-      const configRaw = await readFile(`${projectDir}/claude_config.yaml`, 'utf-8')
-      res.json({ info: configRaw })
+      const toml = await readFile(`${projectsDir}/${name}/config.toml`, 'utf-8')
+      res.json({
+        info: {
+          description: getTomlString(toml, 'project', 'description'),
+          agent_notes: getTomlString(toml, 'project', 'agent_notes'),
+        },
+      })
     } catch {
       res.json({ info: null })
     }
@@ -249,7 +247,8 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
       // Internal project scaffolding — hidden from user-facing file manager
       const HIDDEN = new Set([
         'claude_references', 'user_references', 'CLAUDE.md',
-        'claude_config.yaml', 'report.md',
+        'config.toml', 'iris.sqlite', 'iris.sqlite-wal', 'iris.sqlite-shm',
+        'memory', 'artifacts', 'ops', 'indexes', 'datasets',
       ])
 
       async function walk(dir: string, prefix: string): Promise<{ name: string; path: string; type: 'file' | 'dir'; size: number }[]> {
@@ -356,18 +355,11 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
   app.post('/api/projects/update-config', async (req, res) => {
     try {
       const { name, description, agentNotes } = req.body
-      const configPath = `${projectsDir}/${name}/claude_config.yaml`
-      let config = await readFile(configPath, 'utf-8')
-      if (description !== undefined) {
-        config = config.replace(/description:.*/, `description: ${description || 'null'}`)
-      }
-      if (agentNotes !== undefined) {
-        // Replace agent_notes whether single-line or block scalar (it's the last key)
-        config = config.replace(/agent_notes:[\s\S]*$/, agentNotes
-          ? `agent_notes: |\n${agentNotes.split('\n').map((l: string) => `  ${l}`).join('\n')}\n`
-          : 'agent_notes: null\n')
-      }
-      await writeFile(configPath, config, 'utf-8')
+      const configPath = `${projectsDir}/${name}/config.toml`
+      let toml = await readFile(configPath, 'utf-8')
+      if (description !== undefined) toml = setTomlString(toml, 'project', 'description', description)
+      if (agentNotes !== undefined) toml = setTomlString(toml, 'project', 'agent_notes', agentNotes)
+      await writeFile(configPath, toml, 'utf-8')
       res.json({ ok: true })
     } catch (err: any) {
       res.status(500).json({ error: err.message })
@@ -392,52 +384,79 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
   })
 }
 
-// -- claude_config.yaml dial helpers ---------------------------------------
-// Surgical in-place edits to preserve comments and formatting; full YAML
-// round-trip would rewrite the file.
+// -- config.toml dial helpers ---------------------------------------------
+// Surgical in-place edits: locate `[section]`, update `key = ...` within,
+// insert before the next section if missing. Comments and formatting survive.
 
-function parseBehaviorDials(yaml: string): {
+function parseBehaviorDials(toml: string): {
   autonomy: string
-  pushback: Record<string, string>
-  memory: Record<string, string>
+  pushback: string
+  memory: { slice_budget_tokens: number }
 } {
-  const autonomy = (yaml.match(/^autonomy:\s*(\S+)/m)?.[1] ?? 'medium').trim()
   return {
-    autonomy,
-    pushback: parseBlock(yaml, 'pushback'),
-    memory: parseBlock(yaml, 'memory'),
+    autonomy: getTomlString(toml, 'behavior', 'autonomy'),
+    pushback: getTomlString(toml, 'behavior', 'pushback'),
+    memory: {
+      slice_budget_tokens: Number(getTomlString(toml, 'memory', 'slice_budget_tokens') || '0'),
+    },
   }
 }
 
-function parseBlock(yaml: string, key: string): Record<string, string> {
-  const re = new RegExp(`^${key}:\\s*$([\\s\\S]*?)(?=^\\S|\\Z)`, 'm')
-  const m = yaml.match(re)
-  const out: Record<string, string> = {}
-  if (!m) return out
-  for (const line of m[1].split(/\r?\n/)) {
-    const mm = line.match(/^\s+([A-Za-z_]+):\s*([^#\n]+?)\s*(?:#.*)?$/)
-    if (mm) out[mm[1]] = mm[2].trim()
+function sectionBounds(toml: string, section: string): { start: number; end: number } | null {
+  const re = new RegExp(`^\\[${section}\\]\\s*$`, 'm')
+  const m = re.exec(toml)
+  if (!m) return null
+  const start = m.index + m[0].length
+  const next = toml.slice(start).search(/^\[/m)
+  return { start, end: next < 0 ? toml.length : start + next }
+}
+
+function getTomlString(toml: string, section: string, key: string): string {
+  const b = sectionBounds(toml, section)
+  if (!b) return ''
+  const body = toml.slice(b.start, b.end)
+  // Triple-quoted multiline
+  const mm = body.match(new RegExp(`^\\s*${key}\\s*=\\s*"""([\\s\\S]*?)"""`, 'm'))
+  if (mm) return mm[1].replace(/^\n/, '')
+  // Single-line string
+  const ms = body.match(new RegExp(`^\\s*${key}\\s*=\\s*"((?:[^"\\\\]|\\\\.)*)"`, 'm'))
+  if (ms) return ms[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+  // Bare value (number, bool)
+  const mn = body.match(new RegExp(`^\\s*${key}\\s*=\\s*([^\\s#]+)`, 'm'))
+  if (mn) return mn[1]
+  return ''
+}
+
+function writeTomlLine(toml: string, section: string, key: string, rendered: string): string {
+  const b = sectionBounds(toml, section)
+  if (!b) {
+    const sep = toml.endsWith('\n') ? '' : '\n'
+    return `${toml}${sep}\n[${section}]\n${key} = ${rendered}\n`
   }
-  return out
+  const body = toml.slice(b.start, b.end)
+  // Match existing key (single-line, multiline, or bare) across full entry.
+  const multi = new RegExp(`^(\\s*)${key}\\s*=\\s*"""[\\s\\S]*?"""[^\\n]*$`, 'm')
+  const single = new RegExp(`^(\\s*)${key}\\s*=[^\\n]*$`, 'm')
+  const replacement = (indent: string) => `${indent}${key} = ${rendered}`
+  let newBody: string
+  if (multi.test(body)) {
+    newBody = body.replace(multi, (_m, indent) => replacement(indent))
+  } else if (single.test(body)) {
+    newBody = body.replace(single, (_m, indent) => replacement(indent))
+  } else {
+    const trimmed = body.replace(/\s+$/, '')
+    newBody = `${trimmed}\n${key} = ${rendered}\n${body.slice(trimmed.length)}`
+  }
+  return toml.slice(0, b.start) + newBody + toml.slice(b.end)
 }
 
-function replaceScalar(yaml: string, key: string, value: string): string {
-  const re = new RegExp(`^(${key}:\\s*)(\\S+)(.*)$`, 'm')
-  if (!re.test(yaml)) return yaml + `\n${key}: ${value}\n`
-  return yaml.replace(re, `$1${value}$3`)
+function setTomlString(toml: string, section: string, key: string, value: string): string {
+  const rendered = value.includes('\n')
+    ? `"""\n${value}\n"""`
+    : `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  return writeTomlLine(toml, section, key, rendered)
 }
 
-function replaceNested(yaml: string, parent: string, key: string, value: string): string {
-  const re = new RegExp(`^(\\s+${key}:\\s*)([^#\\n]+?)(\\s*(?:#.*)?)$`, 'm')
-  // Only replace if inside the parent block — simple heuristic: must appear after "^parent:"
-  const pIdx = yaml.search(new RegExp(`^${parent}:`, 'm'))
-  if (pIdx < 0) return yaml
-  const before = yaml.slice(0, pIdx)
-  const after = yaml.slice(pIdx)
-  const nextTop = after.slice(1).search(/^\S/m)
-  const blockEnd = nextTop < 0 ? after.length : 1 + nextTop
-  const block = after.slice(0, blockEnd)
-  if (!re.test(block)) return yaml
-  const newBlock = block.replace(re, `$1${value}$3`)
-  return before + newBlock + after.slice(blockEnd)
+function setTomlNumber(toml: string, section: string, key: string, value: number): string {
+  return writeTomlLine(toml, section, key, String(value))
 }
