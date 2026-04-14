@@ -1160,7 +1160,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 10.4 — Phase 10 E2E + V1 tag
+### [x] Task 10.4 — Phase 10 E2E + V1 tag
 
 **Phase**: 10 · **Effort**: M · **Blocks**: Phase 11
 
