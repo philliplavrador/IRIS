@@ -105,7 +105,7 @@ Goal: clear every file destined for deletion before any rewrite begins. Build wi
 
 ---
 
-### [ ] Task 0.4 — Delete legacy memory modules
+### [x] Task 0.4 — Delete legacy memory modules
 
 **Phase**: 0 · **Effort**: S · **Blocks**: 1.5, 1.7, all later memory tasks
 

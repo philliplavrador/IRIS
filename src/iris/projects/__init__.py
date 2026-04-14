@@ -169,17 +169,6 @@ def create_project(name: str, description: str | None = None) -> Path:
 
     shutil.copytree(template, dest)
 
-    # Initialize the L1/L3 SQLite stores and ensure the L2 digests dir exists.
-    # Schemas live in code (not shipped as binary TEMPLATE files) so migrations
-    # are sane. See projects/ledger.py, knowledge.py, digest.py.
-    from . import digest as _digest
-    from . import knowledge as _knowledge
-    from . import ledger as _ledger
-
-    _ledger.init_ledger(dest)
-    _knowledge.init_knowledge(dest)
-    _digest.digests_dir(dest)
-
     # Fill in the new project's claude_config.yaml
     cfg_path = dest / CONFIG_FILENAME
     cfg = _load_yaml_or_empty(cfg_path)
@@ -669,3 +658,7 @@ def _dump_yaml(path: Path, data: dict) -> None:
     with tmp.open("w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, sort_keys=False, default_flow_style=False)
     tmp.replace(path)
+
+
+def __getattr__(name: str):
+    raise NotImplementedError(f"{name}: memory layer rebuilding — see REVAMP.md")
