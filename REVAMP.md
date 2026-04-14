@@ -827,7 +827,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 ## Phase 6 — Datasets, Versions, Profile
 
-### [ ] Task 6.1 — datasets.py
+### [x] Task 6.1 — datasets.py
 
 **Phase**: 6 · **Effort**: M · **Blocks**: 6.2, 6.3
 
