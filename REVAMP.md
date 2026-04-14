@@ -907,7 +907,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 ## Phase 7 — Runs DAG (Provenance)
 
-### [ ] Task 7.1 — runs.py
+### [x] Task 7.1 — runs.py
 
 **Phase**: 7 · **Effort**: L · **Blocks**: 7.2
 
