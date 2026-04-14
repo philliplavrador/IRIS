@@ -44,6 +44,7 @@ DB_FILENAME: Final[str] = "iris.sqlite"
 SCHEMA_VERSION: Final[int] = 1
 
 _SCHEMA_SQL_PATH: Final[Path] = Path(__file__).with_name("schema.sql")
+_MIGRATIONS_DIR: Final[Path] = Path(__file__).with_name("migrations")
 
 _log = logging.getLogger(__name__)
 
@@ -168,17 +169,33 @@ def init_schema(conn: sqlite3.Connection) -> None:
 
 
 def migrate(conn: sqlite3.Connection, target_version: int) -> None:
-    """Migrate the schema to ``target_version``. V1 no-op unless target == current.
+    """Migrate the schema forward to ``target_version``.
 
-    Reserved for future schema bumps (V2 adds sqlite-vec virtual tables,
-    V3 adds a ``retrieval_events`` table). Today: raises
-    ``NotImplementedError`` if the caller asks for a version we don't
-    know how to reach.
+    V1 → V2 applies ``migrations/v2.sql`` (sqlite-vec virtual tables).
+    The caller must have ``VEC_AVAILABLE = True`` — otherwise the
+    ``CREATE VIRTUAL TABLE ... USING vec0`` statements fail. This
+    function surfaces that failure by raising ``RuntimeError``.
     """
     version = current_version(conn)
     if target_version == version:
         return
-    raise NotImplementedError(
-        f"migrate({version} -> {target_version}) not implemented; "
-        f"V1 schema is version {SCHEMA_VERSION}"
-    )
+    if target_version < version:
+        raise NotImplementedError(f"downgrade {version} -> {target_version} not supported")
+
+    while current_version(conn) < target_version:
+        next_version = current_version(conn) + 1
+        migration_path = _MIGRATIONS_DIR / f"v{next_version}.sql"
+        if not migration_path.is_file():
+            raise NotImplementedError(
+                f"migrate({version} -> {target_version}) missing file {migration_path.name}"
+            )
+        if next_version == 2 and not VEC_AVAILABLE:
+            raise RuntimeError(
+                "v2 migration requires sqlite-vec; VEC_AVAILABLE is False. "
+                "Install sqlite-vec and use a Python build with loadable "
+                "extensions enabled."
+            )
+        sql = migration_path.read_text(encoding="utf-8")
+        conn.executescript(sql)
+        if current_version(conn) < next_version:
+            conn.execute(f"PRAGMA user_version = {next_version}")

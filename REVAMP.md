@@ -1197,7 +1197,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 11.2 — Schema migration v1 → v2
+### [x] Task 11.2 — Schema migration v1 → v2
 
 **Phase**: 11 · **Effort**: M · **Blocks**: 11.3
 

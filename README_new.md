@@ -54,3 +54,58 @@ It proposes next steps, flags contradictions with prior runs or published findin
 - 📊 Anyone tired of stateless chat windows that forget everything between sessions
 
 ---
+
+## Features
+
+### 🧠 Project-scoped learning
+
+Every project is its own universe. IRIS keeps a dedicated memory store per project — so context from your MEA bursting analysis doesn't bleed into your climate-data project, and vice versa.
+
+What gets remembered, automatically:
+
+- **Data profiles** — shapes, sample rates, units, channel counts, inferred on upload
+- **Findings & decisions** — "we're treating channels 742 and 861 as the reference pair"
+- **Caveats & open questions** — "sampling rate on day 3 is suspect, revisit later"
+- **Preferences** — plot styles, default params, conventions you've set
+- **Run lineage** — every pipeline execution, with inputs, params, and outputs
+
+Switch projects and the workspace flips entirely — different data, different memory, different configured behaviors.
+
+<!-- TODO: screenshot of the memory/curation panel showing memory entries -->
+<p align="center">
+  <img src="docs/images/memory-panel.png" alt="Per-project memory panel with findings, decisions, and open questions" width="720">
+</p>
+
+### ⚙️ Configurable behavior
+
+IRIS isn't a fixed personality. Every project has a `config.toml` plus a **Behavior** panel in the UI where you dial in *how* the assistant collaborates with you:
+
+- **Autonomy level** — from "ask before every run" to "just figure it out"
+- **Pushback strength** — how hard IRIS questions assumptions or flags issues
+- **Suggestion frequency** — chatty partner vs. quiet executor
+- **Literature grounding** — whether to cite papers proactively, only on request, or off
+- **Tone & verbosity** — terse bullets vs. full paragraphs
+
+<!-- TODO: screenshot of the Behavior panel -->
+<p align="center">
+  <img src="docs/images/behavior-panel.png" alt="Behavior settings — autonomy, pushback, and suggestion controls" width="720">
+</p>
+
+### 🧪 Reproducible by construction
+
+Every plot, dataset derivative, and report carries the DSL chain, parameters, and input fingerprints that produced it. Re-running six months later reproduces the exact output — or tells you loudly what changed.
+
+<!-- TODO: screenshot of a plot viewer showing sidecar metadata / provenance -->
+<p align="center">
+  <img src="docs/images/plot-provenance.png" alt="Plot viewer with DSL + parameters + source fingerprints sidecar" width="720">
+</p>
+
+### 📚 Literature-aware suggestions
+
+IRIS pulls context from relevant published work and uses it to interpret unusual results, propose methods, and flag contradictions with prior findings — with citations so you can trace every claim.
+
+### 🔌 Extensible ops
+
+17 built-in signal-processing operations out of the box (filtering, detection, spectral, cross-modal). Need something bespoke? Ask IRIS in chat — it can author a project-scoped custom op, version it, and wire it into the DSL.
+
+---

@@ -139,3 +139,50 @@ def test_all_fts_tables_are_queryable(tmp_path: Path) -> None:
             assert rows == []
     finally:
         conn.close()
+
+
+def test_migrate_v1_to_v2_requires_sqlite_vec(tmp_path: Path) -> None:
+    """When sqlite-vec isn't loadable, ``migrate(conn, 2)`` raises cleanly.
+
+    On machines where sqlite-vec is available the migration succeeds and
+    bumps user_version to 2; otherwise the guard in ``migrate`` fires.
+    """
+    from iris.projects.db import VEC_AVAILABLE as _VEC_AVAILABLE
+
+    conn = connect(tmp_path)
+    try:
+        init_schema(conn)
+        assert current_version(conn) == 1
+        if _VEC_AVAILABLE:
+            migrate(conn, target_version=2)
+            assert current_version(conn) == 2
+            tables = {
+                row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+            assert "memory_entries_vec" in tables
+            assert "operations_vec" in tables
+        else:
+            with pytest.raises(RuntimeError, match="sqlite-vec"):
+                migrate(conn, target_version=2)
+    finally:
+        conn.close()
+
+
+def test_migrate_same_version_is_noop(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    try:
+        init_schema(conn)
+        migrate(conn, target_version=current_version(conn))
+        assert current_version(conn) == SCHEMA_VERSION
+    finally:
+        conn.close()
+
+
+def test_migrate_downgrade_unsupported(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    try:
+        init_schema(conn)
+        with pytest.raises(NotImplementedError, match="downgrade"):
+            migrate(conn, target_version=0)
+    finally:
+        conn.close()
