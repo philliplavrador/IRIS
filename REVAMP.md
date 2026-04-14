@@ -382,7 +382,7 @@ Skip — folded into 1.5 and 1.6.
 
 ---
 
-### [ ] Task 1.8 — Update root navigation
+### [x] Task 1.8 — Update root navigation
 
 **Phase**: 1 · **Effort**: S · **Blocks**: none (touches docs only)
 

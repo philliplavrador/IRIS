@@ -21,7 +21,7 @@ loader.
 The full per-file map with spec §s and task numbers lives in
 [projects/CLAUDE.md](projects/CLAUDE.md). High-level summary:
 
-- `schema.sql`, `db.py`, `__init__.py` (Phase 1) — SQLite + lifecycle.
+- `schema.sql`, `db.py`, `__init__.py` (Phase 1, **done**) — SQLite + lifecycle.
 - `events.py`, `sessions.py` (Phase 2) — event log + memory sessions.
 - `messages.py`, `tool_calls.py` (Phase 3) — chat + tool records + FTS5.
 - `memory_entries.py`, `extraction.py`, `markdown_sync.py` (Phase 4) —

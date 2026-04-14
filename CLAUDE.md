@@ -12,9 +12,10 @@ memory-facing parts of the webapp, **read REVAMP.md first** — it tells you
 which task is next, which files to touch, and which tests must pass.
 
 Phase 0 (nuke legacy memory modules, rebuild TEMPLATE, collapse YAML into a
-single `config.toml`) is complete. Phase 1+ rebuilds `iris.sqlite` per spec
-§7 and scaffolds lifecycle / events / messages / memory entries / artifacts
-/ datasets / runs / operations / retrieval.
+single `config.toml`) and Phase 1 foundation (`schema.sql`, `db.py`, project
+lifecycle CRUD on the new layout) are complete. Phase 2+ layers on events /
+messages / memory entries / artifacts / datasets / runs / operations /
+retrieval per spec §7.
 
 ## Architecture overview
 
