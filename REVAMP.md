@@ -359,7 +359,7 @@ Goal: stand up `iris.sqlite` per spec §7, scaffold every CLAUDE.md the implemen
 
 ---
 
-### [ ] Task 1.6 — tests/test_project_lifecycle.py
+### [x] Task 1.6 — tests/test_project_lifecycle.py
 
 **Phase**: 1 · **Effort**: S · **Blocks**: 1.10
 
