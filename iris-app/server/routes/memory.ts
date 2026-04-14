@@ -424,6 +424,14 @@ export function registerMemoryRoutes(app: Express): void {
     }
   });
 
+  app.post("/api/memory/slice", async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost("/api/memory/slice", req.body ?? {}));
+    } catch (e) {
+      forwardError(res, e);
+    }
+  });
+
   app.get(
     "/api/memory/should_retrieve",
     async (req: Request, res: Response) => {

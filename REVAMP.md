@@ -1095,7 +1095,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 9.5 — agent-bridge.ts: prompt assembly via slice
+### [x] Task 9.5 — agent-bridge.ts: prompt assembly via slice
 
 **Phase**: 9 · **Effort**: L · **Blocks**: 9.6
 

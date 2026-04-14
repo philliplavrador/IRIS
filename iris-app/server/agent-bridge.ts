@@ -418,60 +418,45 @@ export function buildDialsBlock(configRaw: string): string {
   )
 }
 
-async function buildSystemPrompt(projectName: string, cwd: string): Promise<string> {
-  const irisRoot = getIrisRoot()
-  const parts: string[] = []
-
-  // Base identity — domain-agnostic. The user's data type is whatever they
-  // uploaded; the agent learns meaning from their annotations, not from
-  // hard-coded assumptions here.
-  parts.push(
-    `You are IRIS, a project-scoped AI analysis partner working in project "${projectName}" at ${cwd}. ` +
-    `Uploaded data lives in input_data/. You are already in the correct project — do NOT read .iris/active_project. ` +
-    `Work is domain-agnostic: never assume a field (neuroscience, finance, marketing, etc.). ` +
-    `Semantic meaning of columns/datasets comes from the user's annotations on the data profile, which are summarized below.`
-  )
-
-  // Global rules from configs/agent_rules.yaml
+/**
+ * Assemble the system prompt from the daemon's 7-segment slice builder
+ * (REVAMP Task 9.5, spec §9.1). Segments land in spec order so the stable
+ * prefix (system_prompt, core_memory, dataset_context) sits first for
+ * Anthropic prompt-cache efficiency.
+ *
+ * Agent dials now live in [agent.dials] of configs/config.toml and are
+ * rendered into segment 1 by slice_builder — no YAML dial block here.
+ */
+async function buildSystemPrompt(
+  projectName: string,
+  _cwd: string,
+  currentQuery: string,
+  memorySessionId?: string,
+): Promise<string> {
   try {
-    const rulesRaw = await readFile(resolve(irisRoot, 'configs', 'agent_rules.yaml'), 'utf-8')
-    const rules = extractYamlValue(rulesRaw, 'rules')
-    if (rules) parts.push(`## Global Rules\n${rules}`)
-  } catch {}
-
-  // Per-project agent_notes from claude_config.yaml
-  try {
-    const configRaw = await readFile(resolve(cwd, 'claude_config.yaml'), 'utf-8')
-    const notes = extractYamlValue(configRaw, 'agent_notes')
-    if (notes) parts.push(`## Project Instructions\n${notes}`)
-
-    parts.push(buildDialsBlock(configRaw))
-  } catch {}
-
-  // Pinned slice — the derived, token-budgeted memory view (L2 last digest +
-  // L3 active goals/decisions/facts + confirmed profile annotations). See
-  // docs/iris-memory.md §3.6.
-  try {
-    const slice = await daemonPost<{
-      rendered: string
-      used_tokens: number
-      budget: number
-      dropped_sections: string[]
-    }>('/api/memory/build_slice', { project: projectName })
-    if (slice.rendered && slice.rendered !== '(pinned slice is empty)') {
-      parts.push(`## Pinned Memory (${slice.used_tokens}/${slice.budget} tokens)\n${slice.rendered}`)
+    await ensureActiveProject(projectName)
+    const resp = await daemonPost<{
+      data: {
+        segments: Array<{ name: string; content: string; token_count: number }>
+        total_tokens: number
+        retrieval_skipped: boolean
+      }
+    }>('/api/memory/slice', {
+      session_id: memorySessionId ?? '',
+      current_query: currentQuery,
+    })
+    const segments = resp?.data?.segments ?? []
+    const parts: string[] = []
+    for (const seg of segments) {
+      if (seg.content && seg.content.trim()) parts.push(seg.content)
     }
-  } catch {}
-
-  // Retrieval primitive reminder.
-  parts.push(
-    `## Retrieval\n` +
-    `For anything not in the pinned slice above, use the recall() primitive (POST /api/memory/recall) ` +
-    `rather than grepping markdown. Returned hits include citation ids like "decision#42" — cite them verbatim. ` +
-    `Durable facts/decisions go through propose_* (queued) and commit at session end.`
-  )
-
-  return parts.join('\n\n')
+    if (parts.length === 0) {
+      return `You are IRIS, a project-scoped AI analysis partner working in project "${projectName}".`
+    }
+    return parts.join('\n\n')
+  } catch {
+    return `You are IRIS, a project-scoped AI analysis partner working in project "${projectName}".`
+  }
 }
 
 export async function sendMessage(prompt: string, broadcast: BroadcastFn, projectName?: string): Promise<void> {
@@ -503,7 +488,7 @@ export async function sendMessage(prompt: string, broadcast: BroadcastFn, projec
 
   try {
     const systemPrompt = projectName
-      ? await buildSystemPrompt(projectName, cwd)
+      ? await buildSystemPrompt(projectName, cwd, prompt, projectMemorySessions.get(projectName))
       : undefined
 
     const messages = query({
