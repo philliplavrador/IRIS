@@ -19,6 +19,15 @@ Endpoints (all mounted under ``/api`` by ``daemon.app``)::
     GET  /memory/messages/search          FTS5 BM25 search across a project
     POST /memory/tool_calls               Append one tool-call row
     PATCH /memory/tool_calls/{id}/output_artifact  Attach artifact id to a tool-call
+    POST /memory/entries                  Propose a draft memory
+    POST /memory/entries/commit           Flip drafts to active
+    POST /memory/entries/discard          Hard-delete drafts
+    GET  /memory/entries                  Query/filter entries
+    GET  /memory/entries/{id}             Fetch one entry
+    PATCH /memory/entries/{id}/status     Transition status
+    POST /memory/entries/supersede        Supersede one entry with another
+    DELETE /memory/entries/{id}           Soft-delete (archive)
+    POST /memory/extract                  LLM session extraction (lazy import)
 
 All routes resolve the **active** project via
 :func:`iris.projects.resolve_active_project`. There is no ``?project=``
@@ -40,6 +49,7 @@ from pydantic import BaseModel, Field
 
 from iris.projects import db as _db
 from iris.projects import events as _events
+from iris.projects import memory_entries as _memory_entries
 from iris.projects import messages as _messages
 from iris.projects import resolve_active_project
 from iris.projects import sessions as _sessions
@@ -182,6 +192,38 @@ class AppendToolCallRequest(BaseModel):
 
 class AttachArtifactRequest(BaseModel):
     artifact_id: str = Field(min_length=1)
+
+
+class ProposeMemoryRequest(BaseModel):
+    scope: str = Field(min_length=1)
+    memory_type: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+    importance: float = 5.0
+    confidence: float = 0.5
+    evidence: list[Any] | None = None
+    tags: list[str] | None = None
+    dataset_id: str | None = None
+    session_id: str | None = None
+
+
+class IdsRequest(BaseModel):
+    ids: list[str]
+    session_id: str | None = None
+
+
+class StatusRequest(BaseModel):
+    status: str = Field(min_length=1)
+    session_id: str | None = None
+
+
+class SupersedeRequest(BaseModel):
+    old_id: str = Field(min_length=1)
+    new_id: str = Field(min_length=1)
+    session_id: str | None = None
+
+
+class ExtractRequest(BaseModel):
+    session_id: str = Field(min_length=1)
 
 
 # -- events -----------------------------------------------------------------
@@ -416,5 +458,218 @@ async def attach_tool_call_artifact(
         except LookupError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
         return {"data": {"tool_call_id": tool_call_id, "artifact_id": req.artifact_id}}
+    finally:
+        conn.close()
+
+
+# -- memory entries ---------------------------------------------------------
+
+
+_MEMORY_SELECT_COLUMNS = (
+    "memory_id, project_id, scope, dataset_id, memory_type, text, "
+    "importance, confidence, status, created_at, last_validated_at, "
+    "last_accessed_at, access_count, evidence_json, tags, superseded_by"
+)
+
+
+def _fetch_memory_row(conn: sqlite3.Connection, memory_id: str, project_id: str) -> dict[str, Any]:
+    """Return a single memory_entries row as a dict or raise 404."""
+    row = conn.execute(
+        f"SELECT {_MEMORY_SELECT_COLUMNS} FROM memory_entries "
+        "WHERE memory_id = ? AND project_id = ?",
+        (memory_id, project_id),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"memory {memory_id!r} not found")
+    evidence_raw = row["evidence_json"]
+    tags_raw = row["tags"]
+    return {
+        "memory_id": row["memory_id"],
+        "project_id": row["project_id"],
+        "scope": row["scope"],
+        "dataset_id": row["dataset_id"],
+        "memory_type": row["memory_type"],
+        "text": row["text"],
+        "importance": row["importance"],
+        "confidence": row["confidence"],
+        "status": row["status"],
+        "created_at": row["created_at"],
+        "last_validated_at": row["last_validated_at"],
+        "last_accessed_at": row["last_accessed_at"],
+        "access_count": row["access_count"],
+        "evidence": json.loads(evidence_raw) if evidence_raw else None,
+        "tags": json.loads(tags_raw) if tags_raw else None,
+        "superseded_by": row["superseded_by"],
+    }
+
+
+@router.post("/memory/entries")
+async def propose_memory(req: ProposeMemoryRequest) -> dict[str, Any]:
+    """Insert a draft memory entry. Returns the new ``memory_id``."""
+    conn, project_id = _open()
+    try:
+        try:
+            memory_id = _memory_entries.propose(
+                conn,
+                project_id=project_id,
+                scope=req.scope,
+                memory_type=req.memory_type,
+                text=req.text,
+                importance=req.importance,
+                confidence=req.confidence,
+                evidence=req.evidence,
+                tags=req.tags,
+                dataset_id=req.dataset_id,
+                session_id=req.session_id,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": {"memory_id": memory_id}}
+    finally:
+        conn.close()
+
+
+@router.post("/memory/entries/commit")
+async def commit_memory_entries(req: IdsRequest) -> dict[str, Any]:
+    """Flip each draft memory in ``ids`` to ``status='active'``."""
+    conn, _ = _open()
+    try:
+        _memory_entries.commit_pending(conn, req.ids, session_id=req.session_id)
+        return {"data": {"committed": req.ids}}
+    finally:
+        conn.close()
+
+
+@router.post("/memory/entries/discard")
+async def discard_memory_entries(req: IdsRequest) -> dict[str, Any]:
+    """Hard-delete draft memory rows in ``ids``."""
+    conn, _ = _open()
+    try:
+        _memory_entries.discard_pending(conn, req.ids)
+        return {"data": {"discarded": req.ids}}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/entries")
+async def list_memory_entries(
+    type: str | None = Query(default=None),
+    status: str | None = Query(default="active"),
+    scope: str | None = Query(default=None),
+    dataset_id: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=10_000),
+) -> dict[str, Any]:
+    """Query memory entries for the active project with optional filters.
+
+    Pass ``status=all`` to skip the status filter (the underlying module
+    accepts ``None``; we translate the sentinel here).
+    """
+    conn, project_id = _open()
+    try:
+        effective_status: str | None = None if status == "all" else status
+        try:
+            rows = _memory_entries.query(
+                conn,
+                project_id=project_id,
+                memory_type=type,
+                status=effective_status,
+                dataset_id=dataset_id,
+                scope=scope,
+                limit=limit,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": rows}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/entries/{memory_id}")
+async def get_memory_entry(memory_id: str) -> dict[str, Any]:
+    """Fetch a single memory entry by id (project-scoped)."""
+    conn, project_id = _open()
+    try:
+        return {"data": _fetch_memory_row(conn, memory_id, project_id)}
+    finally:
+        conn.close()
+
+
+@router.patch("/memory/entries/{memory_id}/status")
+async def set_memory_status(memory_id: str, req: StatusRequest) -> dict[str, Any]:
+    """Transition a memory entry to a new status."""
+    conn, project_id = _open()
+    try:
+        # Scope-check first so we return 404 (not ValueError) for cross-project ids.
+        _fetch_memory_row(conn, memory_id, project_id)
+        try:
+            _memory_entries.set_status(conn, memory_id, req.status, session_id=req.session_id)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": _fetch_memory_row(conn, memory_id, project_id)}
+    finally:
+        conn.close()
+
+
+@router.post("/memory/entries/supersede")
+async def supersede_memory_entry(req: SupersedeRequest) -> dict[str, Any]:
+    """Mark ``old_id`` superseded by ``new_id``."""
+    conn, _ = _open()
+    try:
+        try:
+            _memory_entries.supersede(
+                conn,
+                old_id=req.old_id,
+                new_id=req.new_id,
+                session_id=req.session_id,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return {"data": {"old_id": req.old_id, "new_id": req.new_id}}
+    finally:
+        conn.close()
+
+
+@router.delete("/memory/entries/{memory_id}")
+async def soft_delete_memory_entry(memory_id: str) -> dict[str, Any]:
+    """Archive a memory entry (soft delete)."""
+    conn, project_id = _open()
+    try:
+        _fetch_memory_row(conn, memory_id, project_id)
+        try:
+            _memory_entries.soft_delete(conn, memory_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return {"data": _fetch_memory_row(conn, memory_id, project_id)}
+    finally:
+        conn.close()
+
+
+@router.post("/memory/extract")
+async def extract_memory(req: ExtractRequest) -> dict[str, Any]:
+    """Run LLM extraction on a session's transcript, proposing draft memories.
+
+    Imports :mod:`iris.projects.extraction` lazily so the daemon can start
+    without ``ANTHROPIC_API_KEY`` set. If the module isn't importable yet
+    (Task 4.2 lands in a sibling worktree), returns 503.
+    """
+    try:
+        from iris.projects import extraction as _extraction  # noqa: PLC0415
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"extraction module unavailable: {e}",
+        ) from e
+
+    conn, _ = _open()
+    try:
+        try:
+            ids = _extraction.extract_session(conn, req.session_id)
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": {"ids": list(ids)}}
     finally:
         conn.close()

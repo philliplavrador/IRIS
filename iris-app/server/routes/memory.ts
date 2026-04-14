@@ -9,7 +9,12 @@
  * modules land and the frontend re-adopts them.
  */
 import type { Express, Request, Response } from 'express'
-import { daemonGet, daemonPatch, daemonPost } from '../services/daemon-client.js'
+import {
+  daemonDelete,
+  daemonGet,
+  daemonPatch,
+  daemonPost,
+} from '../services/daemon-client.js'
 
 function forwardError(res: Response, e: unknown): void {
   const msg = e instanceof Error ? e.message : String(e)
@@ -132,4 +137,87 @@ export function registerMemoryRoutes(app: Express): void {
       }
     },
   )
+
+  // -- memory entries --------------------------------------------------
+  app.post('/api/memory/entries', async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost('/api/memory/entries', req.body ?? {}))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.post('/api/memory/entries/commit', async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost('/api/memory/entries/commit', req.body ?? {}))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.post('/api/memory/entries/discard', async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost('/api/memory/entries/discard', req.body ?? {}))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.post('/api/memory/entries/supersede', async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost('/api/memory/entries/supersede', req.body ?? {}))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.get('/api/memory/entries', async (req: Request, res: Response) => {
+    try {
+      const qs = new URLSearchParams(req.query as Record<string, string>).toString()
+      res.json(await daemonGet(`/api/memory/entries${qs ? `?${qs}` : ''}`))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.get('/api/memory/entries/:memoryId', async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.memoryId)
+      res.json(await daemonGet(`/api/memory/entries/${encodeURIComponent(id)}`))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.patch('/api/memory/entries/:memoryId/status', async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.memoryId)
+      res.json(
+        await daemonPatch(
+          `/api/memory/entries/${encodeURIComponent(id)}/status`,
+          req.body ?? {},
+        ),
+      )
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.delete('/api/memory/entries/:memoryId', async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.memoryId)
+      res.json(await daemonDelete(`/api/memory/entries/${encodeURIComponent(id)}`))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  // -- extraction ------------------------------------------------------
+  app.post('/api/memory/extract', async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost('/api/memory/extract', req.body ?? {}))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
 }

@@ -666,7 +666,7 @@ Goal: collapse the old `goals` / `decisions` / `learned_facts` tables into one `
 
 ---
 
-### [ ] Task 4.3 — Daemon /memory/entries
+### [x] Task 4.3 — Daemon /memory/entries
 
 **Phase**: 4 · **Effort**: M · **Blocks**: 4.4, 4.7
 
