@@ -864,7 +864,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 ---
 
-### [ ] Task 6.4 — Daemon /datasets
+### [x] Task 6.4 — Daemon /datasets
 
 **Phase**: 6 · **Effort**: M · **Blocks**: 6.5
 
