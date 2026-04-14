@@ -632,7 +632,7 @@ Goal: every chat message and tool invocation persists to SQLite with FTS5 search
 
 Goal: collapse the old `goals` / `decisions` / `learned_facts` tables into one `memory_entries` table with a `memory_type` enum. Propose/commit pattern preserved (mapped onto user-approved promotion per spec §10.1).
 
-### [ ] Task 4.1 — memory_entries.py
+### [x] Task 4.1 — memory_entries.py
 
 **Phase**: 4 · **Effort**: L · **Blocks**: 4.2, 4.3, all later memory tasks
 
