@@ -883,9 +883,11 @@ class SliceRequest(BaseModel):
 @router.post("/memory/slice")
 async def build_slice(req: SliceRequest) -> dict[str, Any]:
     """Assemble the 7-segment system-prompt slice (spec §9.1)."""
+    from iris.projects.slice_builder import build_slice as _build_slice_fn
+
     conn, project_id = _open()
     try:
-        result = _slice_builder.build_slice(
+        result = _build_slice_fn(
             conn,
             project_id=project_id,
             session_id=req.session_id,

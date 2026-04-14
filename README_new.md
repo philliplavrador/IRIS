@@ -1,38 +1,56 @@
-# IRIS
+# IRIS — Intelligent Research & Insight System
 
-> A local AI research partner that learns from your analyses and the published literature — so it can suggest next steps, flag patterns, and contribute its own insights instead of just running what you ask.
+> A local AI research partner that learns from your analyses *and* the published literature — so it suggests, questions, and contributes insights instead of just running what you ask.
 
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](LICENSE)
 [![Python: 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
+<!-- TODO: hero screenshot of the webapp (chat + plot + memory side panel) -->
+<p align="center">
+  <img src="docs/images/hero.png" alt="IRIS webapp — chat, plots, and project memory" width="800">
+</p>
+
 ---
 
-## What IRIS is
+## What it is
 
-IRIS is a **local AI-powered data analysis webapp** built around a simple idea: your analysis tool should get smarter the longer you use it.
+**IRIS** is both the app *and* the assistant inside it. The app is a local data analysis webapp; IRIS (the assistant, powered by Claude under the hood) is your research partner — not a code autocomplete. Every project accumulates its own memory — findings, decisions, caveats — and is cross-referenced against relevant published research.
 
-IRIS itself is domain-agnostic — it's designed to support data analysis in any field, from neuroscience to finance to climate to whatever dataset you happen to be staring at. This repository currently ships with a **neuroscience focus** (MEA recordings, calcium imaging, and the signal-processing operations that go with them), but the architecture, memory layer, and partner behaviour are built to generalise.
+| | |
+|---|---|
+| 🧠 **Learns from your work** | Per-project memory of runs, findings, and decisions |
+| 📚 **Learns from the field** | Grounded in literature relevant to your data |
+| ⚙️ **Actually runs the analysis** | Typed DSL + signal-processing engine on your real files |
+| 🔁 **Reproducible** | Every plot carries its DSL, params, and input fingerprints |
+| 🔒 **Local-first** | Your data never leaves your machine |
 
-You create a project, upload a dataset, and work alongside Claude in a persistent workspace. IRIS doesn't just execute what you ask — it accumulates context from every run, every decision, and every result, and cross-references it against the published research relevant to your domain. Over time, it becomes a collaborator that proposes the next analysis, flags when your results echo (or contradict) known findings, and surfaces insights you didn't think to look for.
+**Domain-agnostic by design.** IRIS works for any field — neuroscience, finance, climate, genomics, whatever you're analysing. *This repo* ships with a neuroscience focus (MEA recordings, calcium imaging).
 
-Everything lives on your machine. The project workspace remembers your data, your decisions, and the shape of prior sessions — so you never have to re-explain yourself, and the model has real grounding to reason from.
+## What makes it different
 
-## What it's for
+Most AI tools describe analyses and forget the conversation. IRIS is the opposite:
 
-Most AI chat tools describe analyses in the abstract and forget the conversation the moment you close the tab. IRIS is built to be the opposite:
+**Remembers your project:**
 
-- **A partner, not a parser.** IRIS forms opinions. It suggests what to try next, questions suspicious results, and points at literature that supports or challenges what you're seeing.
-- **Learns from your work.** Every run, plot, and finding feeds a per-project memory — findings, caveats, preferences, open questions — that shapes future recommendations.
-- **Learns from the field.** IRIS pulls context from published research relevant to your dataset and project, so its suggestions are grounded in more than just your own recent history.
-- **Actually runs the analysis.** A typed DSL and signal-processing engine let the model operate on your real files — filtering, detecting, plotting, reporting — not a sandboxed code snippet.
-- **Reproducible and private.** Every output is content-addressed with the DSL chain, parameters, and inputs that produced it. Data and conversations stay local.
+> **You:** "Plot the firing rate over time for channel 861."
+>
+> **IRIS:** *[runs `mea_trace(861).butter_bandpass.sliding_rms`, renders the plot]*<br>
+> "Firing rate peaks around 12 min — matches the bursting pattern you flagged on 2026-03-14 in channel 742. Want me to align these with the calcium trace like last time?"
+
+**Grounds suggestions in the literature:**
+
+> **You:** "The ISI distribution on this culture looks bimodal — not sure what to make of it."
+>
+> **IRIS:** *[pulls up Wagenaar et al. 2006, *J. Neurosci.*]*<br>
+> "Bimodal ISIs in cortical cultures are usually a signature of superbursts — short intra-burst intervals plus long inter-burst gaps. Wagenaar's group characterised this exact pattern at DIV 14–21. If that's what you're seeing, a burst-detection pass with a 100 ms ISI threshold would separate the two modes cleanly. Want me to run it?"
+
+It proposes next steps, flags contradictions with prior runs or published findings, and remembers what you care about.
 
 ## Who it's for
 
-- Researchers in **any field** — neuroscience, finance, climate, genomics, social science — who want an analysis partner that grows with the project.
-- Users of this repo specifically: neuroscientists working with MEA recordings, calcium imaging, and related time-series data, using the bundled signal-processing operations.
-- Anyone with a messy dataset who wants real suggestions and recommendations — not just executed commands.
-- Users who want a persistent, opinionated, literature-aware research partner rather than a stateless chat window.
+- 🔬 Researchers in **any field** who want an analysis partner that grows with the project
+- 🧬 Neuroscientists using this repo specifically — MEA + calcium imaging pipelines ready to go
+- 📊 Anyone tired of stateless chat windows that forget everything between sessions
 
 ---
