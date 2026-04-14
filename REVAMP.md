@@ -653,7 +653,7 @@ Goal: collapse the old `goals` / `decisions` / `learned_facts` tables into one `
 
 ---
 
-### [ ] Task 4.2 — extraction.py (V1 minimum: session-end only)
+### [x] Task 4.2 — extraction.py (V1 minimum: session-end only)
 
 **Phase**: 4 · **Effort**: L · **Blocks**: 4.3, 4.4
 
