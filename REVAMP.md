@@ -1043,7 +1043,7 @@ Goal: catalog every hardcoded op (the existing 17) into the `operations` table. 
 
 ## Phase 9 — Retrieval Pipeline (V1: FTS5 + Triple-Weighted)
 
-### [ ] Task 9.1 — retrieval.py
+### [x] Task 9.1 — retrieval.py
 
 **Phase**: 9 · **Effort**: L · **Blocks**: 9.2
 
