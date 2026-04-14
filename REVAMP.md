@@ -985,7 +985,7 @@ Each call writes corresponding events (`transform_run` for start/complete).
 
 Goal: catalog every hardcoded op (the existing 17) into the `operations` table. Sets the foundation for Phase 15 (dynamic operation generation in V2).
 
-### [ ] Task 8.1 — operations_store.py
+### [x] Task 8.1 — operations_store.py
 
 **Phase**: 8 · **Effort**: M · **Blocks**: 8.2
 
