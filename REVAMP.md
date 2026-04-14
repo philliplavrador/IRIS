@@ -336,7 +336,7 @@ Goal: stand up `iris.sqlite` per spec §7, scaffold every CLAUDE.md the implemen
 
 ---
 
-### [ ] Task 1.5 — Rebuild project lifecycle CRUD
+### [x] Task 1.5 — Rebuild project lifecycle CRUD
 
 **Phase**: 1 · **Effort**: M · **Blocks**: 1.6, 1.10
 

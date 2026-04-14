@@ -1,44 +1,64 @@
 """Project workspace management for IRIS.
 
 A project is a durable analysis workspace under ``projects/<name>/`` that
-bundles references, per-project config, cached outputs, a living report,
-and the L0/L1/L2/L3 memory stores. Projects are gitignored except for
-``TEMPLATE/`` and ``projects/README.md``.
+bundles uploaded datasets, artifacts, per-project config, versioned
+operations, and the full memory system (SQLite + content-addressed FS +
+curated Markdown). Projects are gitignored except for ``TEMPLATE/``,
+``projects/README.md``, and ``projects/CLAUDE.md``.
 
 The active project is tracked via ``.iris/active_project`` (an untracked
-file at the repo root containing a single project name). All ``iris run``
-invocations require an active project.
+file at the repo root containing a single project name).
 
-See docs/projects.md for the full contract.
+See ``IRIS Memory Restructure.md`` §6 for the filesystem contract and
+``src/iris/projects/CLAUDE.md`` for the module map.
 """
 
 from __future__ import annotations
 
+import json as _json
 import re
 import shutil
 import sys
+import tomllib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
-
-import yaml
 
 from iris.config import find_project_root
+from iris.projects import db as _db
 
 # -- constants --------------------------------------------------------------
 
 PROJECTS_DIRNAME = "projects"
 TEMPLATE_NAME = "TEMPLATE"
 ACTIVE_POINTER_REL = Path(".iris") / "active_project"
-CONFIG_FILENAME = "claude_config.yaml"
-REPORT_FILENAME = "report.md"
-CACHE_DIRNAME = ".cache"
-OUTPUT_DIRNAME = "output"
+CONFIG_FILENAME = "config.toml"
+OUTPUT_DIRNAME = "artifacts"  # content-addressed artifact store (spec §6)
+CACHE_DIRNAME = "indexes"  # runtime indexes (spec §6)
 USER_REFS_DIRNAME = "user_references"
 CLAUDE_REFS_DIRNAME = "claude_references"
 
 _NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+__all__ = [
+    "ProjectInfo",
+    "CachedPlot",
+    "project_root",
+    "active_project_path",
+    "project_output_dir",
+    "project_cache_dir",
+    "resolve_active_project",
+    "set_active_project",
+    "open_project",
+    "close_project",
+    "create_project",
+    "delete_project",
+    "list_projects",
+    "get_project_config",
+    "find_cached_plots",
+    "add_reference",
+    "list_references",
+]
 
 
 # -- data classes -----------------------------------------------------------
@@ -78,14 +98,19 @@ def active_project_path() -> Path:
 
 
 def project_output_dir(project_path: Path) -> Path:
-    """Return ``<project>/output`` (ensures exists)."""
+    """Return ``<project>/artifacts`` (ensures exists).
+
+    Under the new spec §6 layout, content-addressed outputs live in
+    ``artifacts/``; legacy callers asking for an "output dir" are routed
+    here for now.
+    """
     out = project_path / OUTPUT_DIRNAME
     out.mkdir(parents=True, exist_ok=True)
     return out
 
 
 def project_cache_dir(project_path: Path) -> Path:
-    """Return ``<project>/.cache`` (sibling of output/, ensures exists)."""
+    """Return ``<project>/indexes`` (runtime index dir, ensures exists)."""
     cache = project_path / CACHE_DIRNAME
     cache.mkdir(parents=True, exist_ok=True)
     return cache
@@ -121,11 +146,12 @@ def resolve_active_project() -> Path | None:
     return candidate
 
 
-def open_project(name: str) -> Path:
-    """Set ``name`` as the active project and return its path.
+def set_active_project(name: str) -> Path:
+    """Mark ``name`` as the active project. Returns the project path.
 
-    Creates ``.iris/`` if needed. Writes the bare project name (not the full
-    path) so the pointer stays portable across clones.
+    Raises ``FileNotFoundError`` if the project does not exist. Creates
+    ``.iris/`` if needed and writes the bare project name so the pointer
+    stays portable across clones.
     """
     _validate_name(name)
     path = project_root() / name
@@ -135,6 +161,18 @@ def open_project(name: str) -> Path:
     pointer.parent.mkdir(parents=True, exist_ok=True)
     pointer.write_text(name + "\n", encoding="utf-8")
     return path
+
+
+def open_project(name: str) -> Path:
+    """Validate that ``name`` exists, mark it active, and return the path.
+
+    Historically this set the active-project pointer as a side effect; that
+    behavior is preserved so existing CLI/daemon callers keep working.
+    Phase 1+ callers that want pure validation should use
+    :func:`set_active_project` directly (same behavior) or reach for
+    ``project_root() / name`` and check ``is_dir()``.
+    """
+    return set_active_project(name)
 
 
 def close_project() -> None:
@@ -150,9 +188,16 @@ def close_project() -> None:
 def create_project(name: str, description: str | None = None) -> Path:
     """Create ``projects/<name>/`` by copying TEMPLATE. Returns the new path.
 
-    Raises FileExistsError if the project already exists. Validates the name
-    matches ``[a-zA-Z0-9_-]{1,64}``. Fills in ``claude_config.yaml`` with
-    the creation timestamp, name, and description. Does NOT set as active.
+    Steps:
+      1. Validate the name against ``[a-zA-Z0-9_-]{1,64}``.
+      2. ``shutil.copytree`` TEMPLATE → ``projects/<name>/``.
+      3. Patch the new project's ``config.toml`` with name + description +
+         creation timestamp.
+      4. ``db.connect()`` + ``db.init_schema()`` so ``iris.sqlite`` exists
+         with the V1 schema before the caller returns.
+
+    Raises ``FileExistsError`` if the project already exists. Does NOT
+    set the new project as active.
     """
     _validate_name(name)
     if name == TEMPLATE_NAME:
@@ -169,15 +214,48 @@ def create_project(name: str, description: str | None = None) -> Path:
 
     shutil.copytree(template, dest)
 
-    # Fill in the new project's claude_config.yaml
+    # Patch the per-project config.toml with identity fields.
     cfg_path = dest / CONFIG_FILENAME
-    cfg = _load_yaml_or_empty(cfg_path)
-    cfg["name"] = name
-    cfg["description"] = description
-    cfg["created_at"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    _dump_yaml(cfg_path, cfg)
+    _patch_project_toml_identity(
+        cfg_path,
+        name=name,
+        description=description or "",
+        created_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+
+    # Initialise iris.sqlite with the V1 schema.
+    conn = _db.connect(dest)
+    try:
+        _db.init_schema(conn)
+    finally:
+        conn.close()
 
     return dest
+
+
+def delete_project(name: str) -> None:
+    """Delete ``projects/<name>/`` and all its contents.
+
+    Clears the active-project pointer if it pointed at ``name``. Raises
+    ``FileNotFoundError`` if the project does not exist. Refuses to
+    delete ``TEMPLATE``.
+    """
+    _validate_name(name)
+    if name == TEMPLATE_NAME:
+        raise ValueError(f"refusing to delete reserved directory '{TEMPLATE_NAME}'")
+    path = project_root() / name
+    if not path.is_dir():
+        raise FileNotFoundError(f"project not found: {path}")
+    shutil.rmtree(path)
+    # Clear the active pointer if it still points at this project.
+    pointer = active_project_path()
+    if pointer.is_file():
+        try:
+            current = pointer.read_text(encoding="utf-8").strip()
+        except OSError:
+            current = ""
+        if current == name:
+            pointer.unlink()
 
 
 def list_projects() -> list[ProjectInfo]:
@@ -196,46 +274,57 @@ def list_projects() -> list[ProjectInfo]:
 
 
 def get_project_config(name_or_path: str | Path) -> dict:
-    """Load ``claude_config.yaml`` from a project and return as a dict.
+    """Load a project's ``config.toml`` and return the parsed mapping.
 
     Accepts a project name (looked up under projects/) or a Path. Returns
     an empty dict if the file is missing. Does NOT merge with global config;
-    that is the job of ``iris.config.apply_project_overrides``.
+    that is :func:`iris.config.apply_project_overrides`.
+
+    The returned dict flattens a couple of common ``[project]`` fields to
+    the top level (``name``, ``description``, ``created_at``) so legacy
+    callers that expect the old ``claude_config.yaml`` top-level keys keep
+    working.
     """
     if isinstance(name_or_path, Path):
         path = name_or_path
     else:
         path = project_root() / name_or_path
     cfg_path = path / CONFIG_FILENAME
-    return _load_yaml_or_empty(cfg_path)
+    if not cfg_path.is_file():
+        return {}
+    try:
+        with cfg_path.open("rb") as f:
+            data = tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+    project_section = data.get("project")
+    if not isinstance(project_section, dict):
+        project_section = {}
+    # Promote identity fields to the top level for legacy consumers.
+    for key in ("name", "description", "created_at"):
+        if key in project_section and key not in data:
+            data[key] = project_section[key]
+    return data
 
 
 # -- plot-level dedup cache -------------------------------------------------
 
-import json as _json
-
 
 @dataclass(frozen=True)
 class CachedPlot:
-    """A plot that already exists in the project output and matches a query."""
+    """A plot that already exists in the project artifact/output and matches a query."""
 
-    plot_path: Path  # e.g. projects/<name>/output/.../plot_001_*.png
-    sidecar_path: Path  # the .json next to it
-    session_dir: Path  # the parent session directory
-    dsl: str  # the DSL string recorded in the sidecar
+    plot_path: Path
+    sidecar_path: Path
+    session_dir: Path
+    dsl: str
     window_ms: tuple[float, float] | None
-    timestamp: str  # sidecar's "timestamp" field
-    ops: list  # the sidecar's expanded ops list (for display)
+    timestamp: str
+    ops: list
 
 
 def _file_fingerprints_for_paths(paths_cfg: dict) -> dict[str, dict]:
-    """Return {key: {path, mtime, size}} for every file path in paths_cfg.
-
-    Mirrors the helper in ``iris.sessions`` without importing it (avoids
-    the heavy ``iris.engine`` import chain when all we want is a fingerprint).
-    Skips ``output_dir`` and ``cache_dir`` and records directories/missing
-    files with a kind tag so comparisons are still meaningful.
-    """
+    """Return {key: {path, mtime, size}} for every file path in paths_cfg."""
     skip = {"output_dir", "cache_dir"}
     out: dict[str, dict] = {}
     for key, value in paths_cfg.items():
@@ -261,25 +350,16 @@ def _fingerprints_match(
     current_sources: dict,
     tolerance_s: float = 1.0,
 ) -> bool:
-    """Compare two file-fingerprint dicts for equality.
-
-    Allows a 1-second mtime tolerance (some filesystems round mtimes).
-    Requires the same set of keys and, for file entries, the same size and
-    (approximately) the same mtime. Directory / missing entries must match
-    exactly by kind.
-    """
+    """Compare two file-fingerprint dicts for equality."""
     if set(sidecar_sources) != set(current_sources):
         return False
     for key in sidecar_sources:
         a = sidecar_sources[key] or {}
         b = current_sources[key] or {}
-        # Missing markers must match
         if a.get("missing") != b.get("missing"):
             return False
-        # Directory markers must match
         if a.get("kind") != b.get("kind"):
             return False
-        # If it's a file (has size), compare size + mtime
         if "size" in a or "size" in b:
             if a.get("size") != b.get("size"):
                 return False
@@ -289,22 +369,7 @@ def _fingerprints_match(
 
 
 def _window_matches(sidecar_window, current_window) -> bool:
-    """Compare a sidecar's stored ``window_ms`` against a query window.
-
-    Query semantics:
-      - ``current_window == "full"`` or ``None``: match any sidecar whose
-        sources were identical. This exists because the resolved "full"
-        window depends on the recording's duration, which we cannot compute
-        without loading the file. Since this check is called AFTER the
-        sources-fingerprint filter, any sidecar that passes the sources
-        check must have been generated from the same data — and therefore
-        "full" against that data resolves to the same tuple. A false
-        positive is only possible if a previous run used an explicit
-        partial window that happened to match; the caller prints the
-        sidecar's stored window so the user can verify.
-      - ``current_window == [start, end]``: require literal equality with
-        the sidecar's stored ``window_ms`` (within 1e-6 tolerance).
-    """
+    """Compare a sidecar's stored ``window_ms`` against a query window."""
     if current_window in (None, "full"):
         return True
     if sidecar_window is None:
@@ -327,73 +392,64 @@ def find_cached_plots(
 ) -> list[CachedPlot]:
     """Scan the project's output/ for plots whose sidecar matches the query.
 
-    Matches a sidecar iff:
+    Searches both the legacy ``output/`` location (pre-REVAMP projects)
+    and the new ``artifacts/`` location (spec §6). Matches a sidecar iff:
+
       1. sidecar["dsl"] equals ``dsl`` (literal string comparison)
       2. sidecar["window_ms"] equals ``window_ms``
-      3. sidecar["sources"] file fingerprints (mtime + size) match the
-         fingerprints derived from ``paths_cfg``
+      3. sidecar["sources"] file fingerprints match ``paths_cfg``
 
-    This is the user-requested "output folder acts as a cache" behavior:
-    identical data + identical operation order + identical params produces
-    a cache hit, avoiding duplicate plots. Param equality is guaranteed by
-    the DSL string comparison (inline overrides like ``op(low_hz=300)`` are
-    part of the DSL, and global-config-level overrides are rejected by the
-    fingerprint check when ``configs/ops.yaml`` has changed content-wise).
-
-    Returns a list (typically 0 or 1 entries) of matching cached plots,
-    newest first. Does not read the plot image itself — only the sidecars.
+    Returns matches newest first.
     """
     project_path = Path(project_path)
-    output_dir = project_path / OUTPUT_DIRNAME
-    if not output_dir.is_dir():
+    candidates: list[Path] = []
+    for sub in ("output", OUTPUT_DIRNAME):
+        d = project_path / sub
+        if d.is_dir():
+            candidates.append(d)
+    if not candidates:
         return []
 
     current_sources = _file_fingerprints_for_paths(paths_cfg)
 
     matches: list[CachedPlot] = []
-    for sidecar in output_dir.rglob("*.json"):
-        # Skip non-sidecar jsons (e.g. manifest.json at the session root)
-        if sidecar.name == "manifest.json":
-            continue
-        if not sidecar.name.endswith(".png.json") and not sidecar.name.endswith(".pdf.json"):
-            continue
-
-        try:
-            data = _json.loads(sidecar.read_text(encoding="utf-8"))
-        except (OSError, _json.JSONDecodeError):
-            continue
-        if not isinstance(data, dict):
-            continue
-
-        if data.get("dsl") != dsl:
-            continue
-        if not _window_matches(data.get("window_ms"), window_ms):
-            continue
-        if not _fingerprints_match(data.get("sources") or {}, current_sources):
-            continue
-
-        # Plot file is the sidecar path with the trailing .json stripped
-        plot_path = sidecar.with_suffix("")  # e.g. "plot_001_x.png"
-        if not plot_path.is_file():
-            continue
-
-        matches.append(
-            CachedPlot(
-                plot_path=plot_path,
-                sidecar_path=sidecar,
-                session_dir=sidecar.parent,
-                dsl=data["dsl"],
-                window_ms=(
-                    tuple(data["window_ms"])
-                    if isinstance(data.get("window_ms"), (list, tuple))
-                    else data.get("window_ms")
-                ),
-                timestamp=data.get("timestamp", ""),
-                ops=data.get("ops") or [],
+    for search_dir in candidates:
+        for sidecar in search_dir.rglob("*.json"):
+            if sidecar.name == "manifest.json":
+                continue
+            if not sidecar.name.endswith(".png.json") and not sidecar.name.endswith(".pdf.json"):
+                continue
+            try:
+                data = _json.loads(sidecar.read_text(encoding="utf-8"))
+            except (OSError, _json.JSONDecodeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            if data.get("dsl") != dsl:
+                continue
+            if not _window_matches(data.get("window_ms"), window_ms):
+                continue
+            if not _fingerprints_match(data.get("sources") or {}, current_sources):
+                continue
+            plot_path = sidecar.with_suffix("")
+            if not plot_path.is_file():
+                continue
+            matches.append(
+                CachedPlot(
+                    plot_path=plot_path,
+                    sidecar_path=sidecar,
+                    session_dir=sidecar.parent,
+                    dsl=data["dsl"],
+                    window_ms=(
+                        tuple(data["window_ms"])
+                        if isinstance(data.get("window_ms"), (list, tuple))
+                        else data.get("window_ms")
+                    ),
+                    timestamp=data.get("timestamp", ""),
+                    ops=data.get("ops") or [],
+                )
             )
-        )
 
-    # Newest first (by sidecar timestamp, falling back to mtime)
     matches.sort(
         key=lambda m: (m.timestamp, m.sidecar_path.stat().st_mtime),
         reverse=True,
@@ -402,6 +458,12 @@ def find_cached_plots(
 
 
 # -- references -------------------------------------------------------------
+#
+# Pre-REVAMP projects kept lightweight markdown stubs under
+# ``claude_references/`` and ``user_references/``. The new memory layer
+# (Phase 4+) replaces these with curated ``memory_entries`` rows; until
+# those land, the helpers below still work for any caller that uses them,
+# creating the directories on demand.
 
 _REFERENCE_SOURCES: tuple[str, ...] = ("web", "user", "claude")
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -415,19 +477,11 @@ def add_reference(
     tags: list[str] | None = None,
     title: str | None = None,
 ) -> Path:
-    """Record a reference in one of the project's references directories.
+    """Record a reference stub under ``claude_references/`` or ``user_references/``.
 
-    - ``source="web"``: ``url_or_path`` is a URL. Writes a stub markdown file
-      with YAML frontmatter under ``claude_references/``.
-    - ``source="claude"``: a training-data-derived claim. Writes a stub under
-      ``claude_references/``; ``url_or_path`` is treated as a short identifier.
-    - ``source="user"``: ``url_or_path`` is a path (absolute, or relative to
-      ``user_references/``). Writes a sidecar ``<file>.ref.md`` next to the
-      file recording metadata. The file itself is NOT copied — the user is
-      expected to have placed it there already.
-
-    Returns the absolute path of the reference record (the stub for web/claude
-    sources, the sidecar for user sources).
+    See module docstring for the pre/post-REVAMP story. Returns the
+    absolute path of the reference record (the stub for web/claude, the
+    sidecar for user sources).
     """
     if source not in _REFERENCE_SOURCES:
         raise ValueError(f"source must be one of {_REFERENCE_SOURCES}, got {source!r}")
@@ -439,7 +493,6 @@ def add_reference(
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     if source == "user":
-        # Locate the file the user dropped into user_references/
         candidate = Path(url_or_path)
         if not candidate.is_absolute():
             candidate = project_path / USER_REFS_DIRNAME / candidate
@@ -461,7 +514,6 @@ def add_reference(
         _write_reference_stub(sidecar, frontmatter, body)
         return sidecar
 
-    # web / claude → stub file under claude_references/
     refs_dir = project_path / CLAUDE_REFS_DIRNAME
     refs_dir.mkdir(parents=True, exist_ok=True)
     slug_source = title or url_or_path
@@ -472,7 +524,7 @@ def add_reference(
         stub = refs_dir / f"{slug}-{counter}.md"
         counter += 1
 
-    frontmatter: dict = {
+    frontmatter = {
         "source": source,
         "title": title or slug_source,
         "added_at": now,
@@ -493,13 +545,7 @@ def add_reference(
 
 
 def list_references(project_path: Path) -> list[dict]:
-    """Return a flat list of reference records from both references dirs.
-
-    Each record is a dict with keys: ``path``, ``source``, ``title``,
-    ``added_at``, ``tags``, ``summary``, and either ``url`` (web), ``file``
-    (user), or ``identifier`` (claude). Files without parseable frontmatter
-    are included with minimal metadata so raw drops are still visible.
-    """
+    """Return a flat list of reference records from both references dirs."""
     project_path = Path(project_path)
     records: list[dict] = []
 
@@ -511,12 +557,10 @@ def list_references(project_path: Path) -> list[dict]:
     user_refs = project_path / USER_REFS_DIRNAME
     if user_refs.is_dir():
         seen_sidecars: set[Path] = set()
-        # First: files with sidecars
         for sidecar in sorted(user_refs.glob("*.ref.md")):
             seen_sidecars.add(sidecar)
             rec = _parse_reference_stub(sidecar, default_source="user")
             records.append(rec)
-        # Then: bare files with no sidecar (so the user still sees what's there)
         for f in sorted(user_refs.iterdir()):
             if not f.is_file() or f.name == ".gitkeep":
                 continue
@@ -549,24 +593,32 @@ def _validate_name(name: str) -> None:
 
 
 def _describe_project(path: Path) -> ProjectInfo:
-    cfg = _load_yaml_or_empty(path / CONFIG_FILENAME)
+    cfg = get_project_config(path)
+    # Prefer top-level promotion from get_project_config; fall back to [project].
+    project_section_raw = cfg.get("project")
+    project_section: dict = project_section_raw if isinstance(project_section_raw, dict) else {}
+    created_at = cfg.get("created_at") or project_section.get("created_at")
+    description = cfg.get("description") or project_section.get("description") or None
+    if description == "":
+        description = None
 
     user_refs = path / USER_REFS_DIRNAME
     claude_refs = path / CLAUDE_REFS_DIRNAME
     n_refs = _count_files(user_refs) + _count_files(claude_refs)
 
-    output = path / OUTPUT_DIRNAME
     n_outputs = 0
-    if output.is_dir():
-        n_outputs = sum(1 for _ in output.rglob("plot_*.png")) + sum(
-            1 for _ in output.rglob("plot_*.pdf")
-        )
+    for sub in ("output", OUTPUT_DIRNAME):
+        d = path / sub
+        if d.is_dir():
+            n_outputs += sum(1 for _ in d.rglob("plot_*.png")) + sum(
+                1 for _ in d.rglob("plot_*.pdf")
+            )
 
     return ProjectInfo(
         name=path.name,
         path=path,
-        created_at=cfg.get("created_at"),
-        description=cfg.get("description"),
+        created_at=created_at,
+        description=description,
         n_references=n_refs,
         n_outputs=n_outputs,
     )
@@ -584,7 +636,6 @@ def _count_files(directory: Path) -> int:
 
 def _slugify(text: str) -> str:
     """Produce a stable filename slug from a URL or title."""
-    # Strip a URL scheme if present so the slug isn't dominated by "https"
     stripped = re.sub(r"^[a-z]+://", "", text.lower())
     slug = _SLUG_RE.sub("-", stripped).strip("-")
     if not slug:
@@ -593,17 +644,43 @@ def _slugify(text: str) -> str:
 
 
 def _write_reference_stub(path: Path, frontmatter: dict, body: str) -> None:
-    """Write a markdown file with a YAML frontmatter header."""
+    """Write a markdown file with a YAML-ish frontmatter header.
+
+    We emit a minimal YAML-shaped block by hand; the old implementation
+    depended on pyyaml, which Task 0.7 removed as a global dependency.
+    The format stays compatible with :func:`_parse_reference_stub`.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    fm_yaml = yaml.safe_dump(frontmatter, sort_keys=False, default_flow_style=False).strip()
-    content = f"---\n{fm_yaml}\n---\n\n{body}"
+    lines = ["---"]
+    for key, value in frontmatter.items():
+        lines.append(f"{key}: {_yaml_scalar(value)}")
+    lines.append("---")
+    lines.append("")
+    content = "\n".join(lines) + "\n" + body
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(content, encoding="utf-8")
     tmp.replace(path)
 
 
+def _yaml_scalar(value) -> str:
+    """Serialize a Python scalar/list into a one-line YAML-ish value."""
+    if isinstance(value, list):
+        if not value:
+            return "[]"
+        return "[" + ", ".join(_yaml_scalar(v) for v in value) + "]"
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    text = str(value)
+    # Quote if it contains YAML-significant characters.
+    if any(ch in text for ch in ":#,[]{}\"'\n") or text in ("", "null", "true", "false"):
+        return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return text
+
+
 def _parse_reference_stub(path: Path, default_source: str) -> dict:
-    """Parse a reference stub's YAML frontmatter into a record dict."""
+    """Parse a reference stub's minimal YAML frontmatter into a record dict."""
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
@@ -621,12 +698,11 @@ def _parse_reference_stub(path: Path, default_source: str) -> dict:
         end = text.find("\n---", 4)
         if end > 0:
             fm_block = text[4:end]
-            try:
-                parsed = yaml.safe_load(fm_block)
-                if isinstance(parsed, dict):
-                    frontmatter = parsed
-            except yaml.YAMLError:
-                frontmatter = {}
+            for line in fm_block.splitlines():
+                if ":" not in line:
+                    continue
+                key, _, raw = line.partition(":")
+                frontmatter[key.strip()] = _parse_yaml_scalar(raw.strip())
 
     record = {
         "path": str(path),
@@ -642,23 +718,136 @@ def _parse_reference_stub(path: Path, default_source: str) -> dict:
     return record
 
 
-def _load_yaml_or_empty(path: Path) -> dict:
+def _parse_yaml_scalar(raw: str):
+    """Inverse of :func:`_yaml_scalar` for the subset we emit."""
+    if raw == "" or raw == "null":
+        return None
+    if raw == "true":
+        return True
+    if raw == "false":
+        return False
+    if raw.startswith("[") and raw.endswith("]"):
+        inner = raw[1:-1].strip()
+        if not inner:
+            return []
+        return [_parse_yaml_scalar(p.strip()) for p in _split_commas(inner)]
+    if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
+        return raw[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+    return raw
+
+
+def _split_commas(text: str) -> list[str]:
+    """Split on commas outside quoted strings (minimal parser)."""
+    parts: list[str] = []
+    buf: list[str] = []
+    in_quotes = False
+    escape = False
+    for ch in text:
+        if escape:
+            buf.append(ch)
+            escape = False
+            continue
+        if ch == "\\":
+            buf.append(ch)
+            escape = True
+            continue
+        if ch == '"':
+            in_quotes = not in_quotes
+            buf.append(ch)
+            continue
+        if ch == "," and not in_quotes:
+            parts.append("".join(buf).strip())
+            buf = []
+            continue
+        buf.append(ch)
+    if buf:
+        parts.append("".join(buf).strip())
+    return parts
+
+
+def _patch_project_toml_identity(
+    path: Path,
+    *,
+    name: str,
+    description: str,
+    created_at: str,
+) -> None:
+    """Patch ``[project]`` identity fields in a TEMPLATE-copied config.toml.
+
+    This is a minimal line-oriented rewrite: it finds the ``[project]``
+    section (which TEMPLATE guarantees with empty ``name``/``description``
+    keys) and replaces those two lines, then appends ``created_at`` if
+    absent. No generalised TOML writer — stdlib ``tomllib`` is read-only
+    and we don't pull in ``tomli-w`` just for this.
+    """
     if not path.is_file():
-        return {}
-    with path.open("r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    if not isinstance(data, dict):
-        raise ValueError(f"{path} must contain a YAML mapping, got {type(data).__name__}")
-    return data
+        # TEMPLATE is malformed — synthesise a minimal config.toml.
+        path.write_text(
+            f'[project]\nname = "{name}"\ndescription = "{description}"\n'
+            f'created_at = "{created_at}"\n',
+            encoding="utf-8",
+        )
+        return
 
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    in_project = False
+    seen_name = False
+    seen_description = False
+    seen_created_at = False
+    out: list[str] = []
 
-def _dump_yaml(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, sort_keys=False, default_flow_style=False)
-    tmp.replace(path)
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            in_project = stripped == "[project]"
+            out.append(line)
+            continue
+        if in_project:
+            # Strip inline comments for matching.
+            key_part = line.split("=", 1)[0].strip() if "=" in line else ""
+            if key_part == "name" and not seen_name:
+                out.append(f'name = "{name}"')
+                seen_name = True
+                continue
+            if key_part == "description" and not seen_description:
+                out.append(f'description = "{description}"')
+                seen_description = True
+                continue
+            if key_part == "created_at" and not seen_created_at:
+                out.append(f'created_at = "{created_at}"')
+                seen_created_at = True
+                continue
+        out.append(line)
 
+    # If we never saw a [project] section, prepend one.
+    if not seen_name and not seen_description:
+        prefix = [
+            "[project]",
+            f'name = "{name}"',
+            f'description = "{description}"',
+            f'created_at = "{created_at}"',
+            "",
+        ]
+        out = prefix + out
+    elif not seen_created_at:
+        # Insert created_at right after the project section identity lines.
+        patched: list[str] = []
+        inserted = False
+        in_proj = False
+        for line in out:
+            patched.append(line)
+            s = line.strip()
+            if s == "[project]":
+                in_proj = True
+                continue
+            if in_proj and not inserted:
+                key_part = line.split("=", 1)[0].strip() if "=" in line else ""
+                if key_part == "description":
+                    patched.append(f'created_at = "{created_at}"')
+                    inserted = True
+        if not inserted:
+            patched.append(f'created_at = "{created_at}"')
+        out = patched
 
-def __getattr__(name: str):
-    raise NotImplementedError(f"{name}: memory layer rebuilding — see REVAMP.md")
+    path.write_text("\n".join(out) + ("\n" if text.endswith("\n") else ""), encoding="utf-8")
