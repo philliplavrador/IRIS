@@ -1,8 +1,11 @@
 """Pipeline executor and top-level run_pipeline API."""
+
 from __future__ import annotations
 
+import logging
 import re as _re
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -16,18 +19,30 @@ from iris.engine.parser import DSLParser
 from iris.engine.registry import OpRegistry
 from iris.engine.type_system import DIRECT_BANK_OPS, TYPE_TRANSITIONS
 from iris.engine.types import (
-    MEABank, MEATrace, PipelineContext, RTBank, RTTrace,
-    SpikeTrain, _SpikeBankIntermediate,
+    MEABank,
+    MEATrace,
+    PipelineContext,
+    RTBank,
+    RTTrace,
+    SpikeTrain,
+    _SpikeBankIntermediate,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 class PipelineExecutor:
     """Execute parsed pipeline items with caching, type checking, and auto-plot."""
 
-    def __init__(self, registry: OpRegistry, cache: PipelineCache,
-                 ctx: PipelineContext, ops_cfg: Dict[str, Dict],
-                 source_loaders: Dict[str, Callable],
-                 get_recording_duration_ms: Optional[Callable] = None):
+    def __init__(
+        self,
+        registry: OpRegistry,
+        cache: PipelineCache,
+        ctx: PipelineContext,
+        ops_cfg: Dict[str, Dict],
+        source_loaders: Dict[str, Callable],
+        get_recording_duration_ms: Optional[Callable] = None,
+    ):
         self.registry = registry
         self.cache = cache
         self.ctx = ctx
@@ -76,7 +91,9 @@ class PipelineExecutor:
                     step_results.append(self._execute_expression(expr))
                 results.append((item, step_results))
                 elapsed = time.perf_counter() - step_t0
-                self._timings.append({"step": i, "label": f"overlay({len(labels)})", "time": elapsed})
+                self._timings.append(
+                    {"step": i, "label": f"overlay({len(labels)})", "time": elapsed}
+                )
                 self._log(f"  -> overlay complete ({elapsed:.2f}s)")
                 if plot:
                     overlay_fn = self.registry.get_overlay_plot()
@@ -90,9 +107,7 @@ class PipelineExecutor:
         margin = self._compute_margin_for_chain(expr)
 
         # Check cache for longest prefix
-        prefix_len, cached = self.cache.find_longest_prefix(
-            window_ms, expr, self.ops_cfg, margin
-        )
+        prefix_len, cached = self.cache.find_longest_prefix(window_ms, expr, self.ops_cfg, margin)
 
         if prefix_len == len(expr.ops):
             self._log(f"    cache hit (full)")
@@ -114,7 +129,7 @@ class PipelineExecutor:
             op = expr.ops[i]
             current = self._apply_op(op, current)
             prefix_key = self.cache.make_prefix_key(
-                window_ms, expr.source, expr.ops[:i + 1], self.ops_cfg, margin
+                window_ms, expr.source, expr.ops[: i + 1], self.ops_cfg, margin
             )
             self.cache.mem_put(prefix_key, current)
             self.cache.disk_put_result(prefix_key, current)
@@ -141,8 +156,11 @@ class PipelineExecutor:
         output_type = self.registry.validate_type_transition(op_name, input_type)
 
         # Handle MEABank vectorization for ops that expect MEATrace
-        if (input_type == MEABank and MEATrace in TYPE_TRANSITIONS.get(op_name, {})
-                and op_name not in DIRECT_BANK_OPS):
+        if (
+            input_type == MEABank
+            and MEATrace in TYPE_TRANSITIONS.get(op_name, {})
+            and op_name not in DIRECT_BANK_OPS
+        ):
             return self._apply_op_to_bank(op, current)
 
         # Handle RTBank vectorization for ops that expect RTTrace
@@ -250,7 +268,9 @@ class PipelineExecutor:
                 window_samples=bank.window_samples,
             )
         else:
-            raise TypeError(f"Unexpected output type {single_output_type} from RTBank vectorization")
+            raise TypeError(
+                f"Unexpected output type {single_output_type} from RTBank vectorization"
+            )
 
     def _apply_function_op(self, op, left: Any) -> Any:
         right = self._execute_expression(op.inner_expr)
@@ -269,8 +289,9 @@ class PipelineExecutor:
                 margin = max(margin, self._compute_margin_for_chain(op.inner_expr))
         return margin
 
-    def _auto_plot(self, result: Any, last_op: Optional[str], label: str,
-                   expr: Optional[ExprNode] = None) -> None:
+    def _auto_plot(
+        self, result: Any, last_op: Optional[str], label: str, expr: Optional[ExprNode] = None
+    ) -> None:
         # Store current expression in context for plot handlers
         self.ctx.current_expr = expr
         plot_fn = self.registry.get_plot(type(result))
@@ -282,14 +303,15 @@ class PipelineExecutor:
                 _orig_show = plt.show
 
                 def _saving_show(*a, **kw):
-                    safe = _re.sub(r'[^\w\-]', '_', label)[:80]
+                    safe = _re.sub(r"[^\w\-]", "_", label)[:80]
                     fig = plt.gcf()
                     plot_path = out / f"{safe}_{_counter[0]}.png"
-                    fig.savefig(str(plot_path), dpi=150, bbox_inches='tight')
+                    fig.savefig(str(plot_path), dpi=150, bbox_inches="tight")
                     _counter[0] += 1
                     # Sidecar provenance JSON next to every saved plot
                     try:
                         from iris.plot_sessions import write_provenance_sidecar
+
                         write_provenance_sidecar(plot_path, self.ctx)
                     except Exception as e:
                         if self.ctx.verbose:
@@ -345,9 +367,9 @@ def run_pipeline(
         globals_cfg = {}
 
     # Extract window_ms from globals_cfg and prepend to pipeline
-    if 'window_ms' in globals_cfg:
-        window_val = globals_cfg['window_ms']
-        if window_val == 'full':
+    if "window_ms" in globals_cfg:
+        window_val = globals_cfg["window_ms"]
+        if window_val == "full":
             window_item = "window_ms[full]"
         else:
             start, end = window_val
@@ -355,19 +377,19 @@ def run_pipeline(
         pipeline_cfg = [window_item] + list(pipeline_cfg)
 
     # Extract cache flags
-    memory_cache = globals_cfg.get('memory_cache', True)
-    disk_cache = globals_cfg.get('disk_cache', True)
+    memory_cache = globals_cfg.get("memory_cache", True)
+    disk_cache = globals_cfg.get("disk_cache", True)
 
     # Extract show_ops_params flag
-    show_ops_params = globals_cfg.get('show_ops_params', False)
-    save_plots = globals_cfg.get('save_plots', False)
+    show_ops_params = globals_cfg.get("show_ops_params", False)
+    save_plots = globals_cfg.get("save_plots", False)
 
-    interactive_plots = globals_cfg.get('interactive_plots', False)
-    plt.rcParams['figure.dpi'] = 72 if interactive_plots else 100
+    interactive_plots = globals_cfg.get("interactive_plots", False)
+    plt.rcParams["figure.dpi"] = 72 if interactive_plots else 100
     try:
         ip = get_ipython()
         if ip is not None:
-            ip.run_line_magic('matplotlib', 'widget' if interactive_plots else 'inline')
+            ip.run_line_magic("matplotlib", "widget" if interactive_plots else "inline")
     except NameError:
         pass
 
@@ -388,16 +410,40 @@ def run_pipeline(
         plot_backend=globals_cfg.get("plot_backend"),
     )
 
-    cache = PipelineCache(cache_dir=ctx.cache_dir, source_paths=paths_cfg,
-                          memory_cache=memory_cache, disk_cache=disk_cache)
+    cache = PipelineCache(
+        cache_dir=ctx.cache_dir,
+        source_paths=paths_cfg,
+        memory_cache=memory_cache,
+        disk_cache=disk_cache,
+    )
     ctx.cache = cache
     parser = DSLParser()
     items = parser.parse_pipeline(pipeline_cfg)
-    executor = PipelineExecutor(registry, cache, ctx, ops_cfg, source_loaders, get_recording_duration_ms)
+    executor = PipelineExecutor(
+        registry, cache, ctx, ops_cfg, source_loaders, get_recording_duration_ms
+    )
+
+    # --- Task 7.2: wire to runs table (best-effort; memory layer must
+    # never take the engine down). -------------------------------------
+    run_conn, run_id, run_project_id = _begin_run_tracking(pipeline_cfg, ops_cfg)
 
     t0 = time.perf_counter()
-    results = executor.run(items, plot=plot)
+    try:
+        results = executor.run(items, plot=plot)
+    except Exception as e:
+        _finalise_run_tracking(run_conn, run_id, run_project_id, error=str(e))
+        raise
     elapsed = time.perf_counter() - t0
+
+    _finalise_run_tracking(
+        run_conn,
+        run_id,
+        run_project_id,
+        outputs={
+            "n_steps": len(results),
+            "elapsed_seconds": elapsed,
+        },
+    )
 
     if verbose:
         print("=" * 70)
@@ -406,10 +452,128 @@ def run_pipeline(
         print(f"  Steps: {len(results)}")
         print(f"  Total time: {elapsed:.2f}s ({elapsed / 60:.1f} min)")
         stats = cache.stats
-        print(f"  Cache: {stats['hits']} hits, {stats['misses']} misses, {stats['disk_hits']} disk hits")
+        print(
+            f"  Cache: {stats['hits']} hits, {stats['misses']} misses, {stats['disk_hits']} disk hits"
+        )
         if executor.timings:
             print("  Step timings:")
             for t in executor.timings:
                 print(f"    [{t['step']}] {t['label']}: {t['time']:.2f}s")
 
     return results
+
+
+# -- runs-table wiring (Task 7.2) -------------------------------------------
+
+
+def _pipeline_operation_string(pipeline_cfg: list) -> str:
+    """Render ``pipeline_cfg`` as a stable operation label for runs rows."""
+    try:
+        return " ; ".join(str(item) for item in pipeline_cfg)
+    except Exception:
+        return "pipeline"
+
+
+def _begin_run_tracking(
+    pipeline_cfg: list,
+    ops_cfg: dict[str, dict],
+) -> tuple[Any, str | None, str | None]:
+    """Insert a ``running`` row in the active project's ``runs`` table.
+
+    Best-effort: any failure (no active project, schema missing, FK
+    rejection because no session is available yet, etc.) is swallowed
+    so engine execution is never blocked by the memory layer.
+
+    Returns ``(conn, run_id, project_id)``. Any element may be ``None``
+    when tracking could not be started; :func:`_finalise_run_tracking`
+    handles that case.
+    """
+    try:
+        # Local imports keep engine importable in minimal environments
+        # where the memory layer isn't available yet.
+        from iris.projects import db as _proj_db
+        from iris.projects import resolve_active_project
+        from iris.projects import runs as _runs
+        from iris.projects import sessions as _sessions
+
+        project_path = resolve_active_project()
+        if project_path is None:
+            return (None, None, None)
+
+        conn = _proj_db.connect(project_path)
+        _proj_db.init_schema(conn)
+
+        project_id = project_path.name
+        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Satisfy the FK from runs.project_id -> projects.project_id without
+        # depending on the daemon being in the loop.
+        conn.execute(
+            "INSERT OR IGNORE INTO projects (project_id, name, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?)",
+            (project_id, project_path.name, now, now),
+        )
+
+        # runs.session_id is NOT NULL; open a short-lived "engine" session
+        # so pipeline executions are attributable even without a UI session.
+        session_id = _sessions.start_session(
+            conn,
+            project_id=project_id,
+            model_provider="iris-engine",
+            model_name="pipeline-executor",
+            system_prompt="",
+        )
+
+        operation_label = _pipeline_operation_string(pipeline_cfg)
+        run_id = _runs.start_run(
+            conn,
+            project_id=project_id,
+            session_id=session_id,
+            operation_type="pipeline",
+            parameters={
+                "pipeline": [str(item) for item in pipeline_cfg],
+                "ops_cfg": {k: v for k, v in ops_cfg.items()},
+            },
+            code=operation_label,
+        )
+        return (conn, run_id, project_id)
+    except Exception as e:
+        # TODO(Task 7.2): surface this via structured telemetry once the
+        # memory-layer logging pipeline lands.
+        _logger.debug("runs tracking disabled for this pipeline: %s", e)
+        return (None, None, None)
+
+
+def _finalise_run_tracking(
+    conn: Any,
+    run_id: str | None,
+    project_id: str | None,
+    *,
+    outputs: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> None:
+    """Close out a runs row opened by :func:`_begin_run_tracking`.
+
+    Best-effort: any exception is logged and swallowed so the engine's
+    normal return / raise path is preserved.
+    """
+    if conn is None or run_id is None:
+        return
+    try:
+        from iris.projects import runs as _runs
+
+        if error is not None:
+            _runs.fail_run(conn, run_id, error_text=error)
+        else:
+            findings = None
+            if outputs is not None:
+                findings = ", ".join(f"{k}={v}" for k, v in outputs.items())
+            _runs.complete_run(conn, run_id, findings_text=findings)
+    except Exception as e:
+        # TODO(Task 7.2): surface this via structured telemetry once the
+        # memory-layer logging pipeline lands.
+        _logger.debug("runs tracking finalise failed: %s", e)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass

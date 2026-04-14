@@ -927,7 +927,7 @@ Each call writes corresponding events (`transform_run` for start/complete).
 
 ---
 
-### [ ] Task 7.2 — Wire engine executor to runs
+### [x] Task 7.2 — Wire engine executor to runs
 
 **Phase**: 7 · **Effort**: L · **Blocks**: 7.3
 
