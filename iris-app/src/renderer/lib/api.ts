@@ -273,89 +273,97 @@ export const api = {
     return res.ok
   },
 
-  // -- L3 knowledge inspector ------------------------------------------
-  listKnowledge: async (
-    project: string,
-    table: string,
-    opts: { status?: string; limit?: number } = {},
-  ): Promise<{ rows: any[] }> => {
-    const qs = new URLSearchParams({ project, table })
+  // -- Memory entries (REVAMP Phase 4.7) -------------------------------
+  // TODO: tighten these permissive types once the daemon settles on a final
+  // MemoryEntry schema (REVAMP §7 memory_entries).
+  listMemoryEntries: async (
+    opts: {
+      type?: string
+      status?: string
+      scope?: string
+      datasetId?: string
+      limit?: number
+    } = {},
+  ): Promise<{ entries: any[] }> => {
+    const qs = new URLSearchParams()
+    if (opts.type) qs.set('type', opts.type)
     if (opts.status) qs.set('status', opts.status)
+    if (opts.scope) qs.set('scope', opts.scope)
+    if (opts.datasetId) qs.set('dataset_id', opts.datasetId)
     if (opts.limit) qs.set('limit', String(opts.limit))
-    const res = await fetch(`${BASE}/api/memory/list_knowledge?${qs.toString()}`)
+    const url = `${BASE}/api/memory/entries${qs.toString() ? `?${qs.toString()}` : ''}`
+    const res = await fetch(url)
+    if (!res.ok) return { entries: [] }
+    const data = await res.json()
+    // Daemon may return {entries: [...]} or a bare list — normalize.
+    if (Array.isArray(data)) return { entries: data }
+    return { entries: data.entries ?? data.rows ?? [] }
+  },
+
+  proposeMemoryEntry: async (body: Record<string, any>): Promise<any> => {
+    const res = await fetch(`${BASE}/api/memory/entries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
     return res.json()
   },
 
-  setKnowledgeStatus: async (project: string, table: string, id: number, status: string): Promise<boolean> => {
-    const res = await fetch(`${BASE}/api/memory/set_status`, {
+  commitMemoryEntries: async (
+    ids: string[],
+    sessionId?: string,
+  ): Promise<any> => {
+    const res = await fetch(`${BASE}/api/memory/entries/commit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project, table, id, status }),
+      body: JSON.stringify({ ids, session_id: sessionId }),
     })
-    return res.ok
-  },
-
-  deleteKnowledgeRow: async (project: string, table: string, id: number): Promise<boolean> => {
-    const res = await fetch(`${BASE}/api/memory/delete_row`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project, table, id }),
-    })
-    return res.ok
-  },
-
-  // -- Curation ritual --------------------------------------------------
-  listDigests: async (project: string): Promise<{ drafts: string[]; finals: string[] }> => {
-    const res = await fetch(`${BASE}/api/memory/list_digests?project=${encodeURIComponent(project)}`)
     return res.json()
   },
 
-  getDraftDigest: async (project: string, session_id: string): Promise<any> => {
+  discardMemoryEntries: async (ids: string[]): Promise<any> => {
+    const res = await fetch(`${BASE}/api/memory/entries/discard`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    })
+    return res.json()
+  },
+
+  patchMemoryEntryStatus: async (id: string, status: string): Promise<any> => {
     const res = await fetch(
-      `${BASE}/api/memory/draft_digest?project=${encodeURIComponent(project)}&session_id=${encodeURIComponent(session_id)}`,
+      `${BASE}/api/memory/entries/${encodeURIComponent(id)}/status`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      },
     )
     return res.json()
   },
 
-  replaceDraftDigest: async (project: string, session_id: string, digest: any): Promise<any> => {
-    const res = await fetch(`${BASE}/api/memory/replace_draft`, {
+  supersedeMemoryEntry: async (oldId: string, newId: string): Promise<any> => {
+    const res = await fetch(`${BASE}/api/memory/entries/supersede`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project, session_id, digest }),
+      body: JSON.stringify({ old_id: oldId, new_id: newId }),
     })
     return res.json()
   },
 
-  listPending: async (project: string, session_id?: string): Promise<{ pending: any[] }> => {
-    const qs = new URLSearchParams({ project })
-    if (session_id) qs.set('session_id', session_id)
-    const res = await fetch(`${BASE}/api/memory/pending?${qs.toString()}`)
-    return res.json()
-  },
-
-  discardPending: async (project: string, ids: number[]): Promise<boolean> => {
-    const res = await fetch(`${BASE}/api/memory/discard_pending`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project, ids }),
-    })
+  softDeleteMemoryEntry: async (id: string): Promise<boolean> => {
+    const res = await fetch(
+      `${BASE}/api/memory/entries/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    )
     return res.ok
   },
 
-  commitSession: async (
-    project: string,
-    session_id: string,
-    opts: { approve_ids?: number[]; finalize_digest?: boolean } = {},
-  ): Promise<{ committed: number; by_kind: Record<string, number> }> => {
-    const res = await fetch(`${BASE}/api/memory/commit_session_writes`, {
+  extractSessionMemories: async (sessionId: string): Promise<any> => {
+    const res = await fetch(`${BASE}/api/memory/extract`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        project,
-        session_id,
-        approve_ids: opts.approve_ids,
-        finalize_digest: opts.finalize_digest ?? true,
-      }),
+      body: JSON.stringify({ session_id: sessionId }),
     })
     return res.json()
   },

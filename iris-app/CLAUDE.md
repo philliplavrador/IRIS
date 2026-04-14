@@ -81,6 +81,10 @@ Phases 1–17:
 See [server/CLAUDE.md](server/CLAUDE.md) and
 [src/renderer/CLAUDE.md](src/renderer/CLAUDE.md) for the per-module breakdown.
 
+## Deferred E2E
+
+- Task 4.7 — Playwright `iris-app/e2e/phase4.spec.ts` (curation end-to-end: create project → chat produces 2 findings + 1 open question → end session → extract → approve → verify active memories + memory/PROJECT.md) is **pending**. The code rewire shipped; the spec itself was skipped under time pressure.
+
 ## Pending work (non-memory)
 
 - Suggestions UI (recommended next analysis steps)

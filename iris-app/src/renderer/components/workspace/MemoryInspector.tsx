@@ -1,27 +1,56 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Loader2, Trash2, Archive, CheckSquare, RefreshCw } from 'lucide-react'
+import { Loader2, Trash2, Archive, RefreshCw } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { Card } from '../ui/card'
 import { ScrollArea } from '../ui/scroll-area'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
 import { api } from '../../lib/api'
 
-type TableKey = 'goals' | 'decisions' | 'learned_facts' | 'declined_suggestions' | 'data_profile_fields'
+// Permissive shape — tighten once the daemon settles on a final schema
+// (REVAMP §7 memory_entries). TODO(phase-10): share this type with api.ts.
+type MemoryEntry = {
+  id: string
+  memory_type?: string
+  content?: string
+  text?: string
+  status?: string
+  importance?: number
+  confidence?: number
+  created_at?: string
+  updated_at?: string
+  scope?: string
+  superseded_by?: string | null
+  [key: string]: any
+}
 
-const TABLES: Array<{ key: TableKey; label: string }> = [
-  { key: 'goals', label: 'Goals' },
-  { key: 'decisions', label: 'Decisions' },
-  { key: 'learned_facts', label: 'Facts' },
-  { key: 'declined_suggestions', label: 'Declined' },
-  { key: 'data_profile_fields', label: 'Profile' },
+// Map UI tabs to schema `memory_type` values. Schema enum: finding,
+// assumption, caveat, open_question, decision, failure_reflection,
+// preference, reflection, session_summary.
+type TabKey =
+  | 'finding'
+  | 'decision'
+  | 'open_question'
+  | 'caveat'
+  | 'assumption'
+  | 'preference'
+  | 'reflection'
+
+const TABS: Array<{ key: TabKey; label: string }> = [
+  { key: 'finding', label: 'Findings' },
+  { key: 'decision', label: 'Decisions' },
+  { key: 'open_question', label: 'Open Qs' },
+  { key: 'caveat', label: 'Caveats' },
+  { key: 'assumption', label: 'Assumptions' },
+  { key: 'preference', label: 'Preferences' },
+  { key: 'reflection', label: 'Reflections' },
 ]
 
 export function MemoryInspector() {
   const project = useProjectStore((s) => s.activeProject)
-  const [table, setTable] = useState<TableKey>('goals')
-  const [rows, setRows] = useState<any[]>([])
+  const [tab, setTab] = useState<TabKey>('finding')
+  const [entries, setEntries] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [includeInactive, setIncludeInactive] = useState(false)
 
@@ -29,27 +58,25 @@ export function MemoryInspector() {
     if (!project) return
     setLoading(true)
     try {
-      const hasStatus = table === 'goals' || table === 'decisions'
-      const res = await api.listKnowledge(project, table, {
-        status: hasStatus && !includeInactive ? 'active' : undefined,
+      const res = await api.listMemoryEntries({
+        type: tab,
+        status: includeInactive ? undefined : 'active',
       })
-      setRows(res.rows ?? [])
+      setEntries(res.entries ?? [])
     } finally {
       setLoading(false)
     }
-  }, [project, table, includeInactive])
+  }, [project, tab, includeInactive])
 
   useEffect(() => { load() }, [load])
 
-  async function setStatus(id: number, status: string) {
-    if (!project) return
-    await api.setKnowledgeStatus(project, table, id, status)
+  async function setStatus(id: string, status: string) {
+    await api.patchMemoryEntryStatus(id, status)
     await load()
   }
 
-  async function del(id: number) {
-    if (!project) return
-    await api.deleteKnowledgeRow(project, table, id)
+  async function softDelete(id: string) {
+    await api.softDeleteMemoryEntry(id)
     await load()
   }
 
@@ -60,21 +87,19 @@ export function MemoryInspector() {
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 pt-4 pb-2 flex items-center gap-3 border-b">
-        <Tabs value={table} onValueChange={(v) => setTable(v as TableKey)}>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
           <TabsList>
-            {TABLES.map((t) => <TabsTrigger key={t.key} value={t.key}>{t.label}</TabsTrigger>)}
+            {TABS.map((t) => <TabsTrigger key={t.key} value={t.key}>{t.label}</TabsTrigger>)}
           </TabsList>
         </Tabs>
         <div className="flex-1" />
-        {(table === 'goals' || table === 'decisions') && (
-          <Button
-            size="sm"
-            variant={includeInactive ? 'default' : 'outline'}
-            onClick={() => setIncludeInactive((v) => !v)}
-          >
-            {includeInactive ? 'Show active only' : 'Show all'}
-          </Button>
-        )}
+        <Button
+          size="sm"
+          variant={includeInactive ? 'default' : 'outline'}
+          onClick={() => setIncludeInactive((v) => !v)}
+        >
+          {includeInactive ? 'Show active only' : 'Show all'}
+        </Button>
         <Button size="sm" variant="outline" onClick={load}>
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
@@ -87,12 +112,12 @@ export function MemoryInspector() {
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
             </div>
           )}
-          {!loading && rows.length === 0 && (
-            <div className="text-sm text-muted-foreground">No rows.</div>
+          {!loading && entries.length === 0 && (
+            <div className="text-sm text-muted-foreground">No entries.</div>
           )}
-          {rows.map((r) => (
-            <Card key={r.id} className="p-3">
-              <RowView table={table} row={r} onStatus={setStatus} onDelete={del} />
+          {entries.map((e) => (
+            <Card key={e.id} className="p-3">
+              <EntryView entry={e} onStatus={setStatus} onDelete={softDelete} />
             </Card>
           ))}
         </div>
@@ -101,125 +126,52 @@ export function MemoryInspector() {
   )
 }
 
-function RowView({
-  table, row, onStatus, onDelete,
+function EntryView({
+  entry, onStatus, onDelete,
 }: {
-  table: TableKey
-  row: any
-  onStatus: (id: number, status: string) => void
-  onDelete: (id: number) => void
+  entry: MemoryEntry
+  onStatus: (id: string, status: string) => void
+  onDelete: (id: string) => void
 }) {
-  const statusBadge = row.status && (
-    <Badge variant={row.status === 'active' ? 'default' : 'outline'}>{row.status}</Badge>
-  )
-  const ts = row.last_referenced_at || row.created_at
-
-  if (table === 'goals') {
-    return (
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="font-mono">#{row.id}</span>
-            {statusBadge}
-            <span>{ts}</span>
-          </div>
-          <div className="text-sm mt-1">{row.text}</div>
-        </div>
-        {row.status === 'active' ? (
-          <div className="flex gap-1.5">
-            <Button size="sm" variant="outline" onClick={() => onStatus(row.id, 'done')}>
-              <CheckSquare className="h-3.5 w-3.5 mr-1" /> Done
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => onStatus(row.id, 'abandoned')}>
-              <Archive className="h-3.5 w-3.5 mr-1" /> Abandon
-            </Button>
-          </div>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => onStatus(row.id, 'active')}>Reactivate</Button>
-        )}
-      </div>
-    )
-  }
-
-  if (table === 'decisions') {
-    return (
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="font-mono">#{row.id}</span>
-            {statusBadge}
-            {row.supersedes && <span>supersedes #{row.supersedes}</span>}
-            <span>{ts}</span>
-          </div>
-          <div className="text-sm mt-1">{row.text}</div>
-          {row.rationale && (
-            <div className="text-xs text-muted-foreground mt-1 italic">{row.rationale}</div>
-          )}
-        </div>
-        {row.status === 'active' ? (
-          <Button size="sm" variant="outline" onClick={() => onStatus(row.id, 'abandoned')}>
-            <Archive className="h-3.5 w-3.5 mr-1" /> Abandon
-          </Button>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => onStatus(row.id, 'active')}>Reactivate</Button>
-        )}
-      </div>
-    )
-  }
-
-  if (table === 'learned_facts') {
-    return (
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="font-mono">#{row.id}</span>
-            {row.superseded_by && <Badge variant="outline">superseded by #{row.superseded_by}</Badge>}
-            {row.confidence != null && <span>conf {row.confidence}</span>}
-            <span>{ts}</span>
-          </div>
-          <div className="text-sm mt-1"><span className="font-mono text-xs">{row.key}</span> = {row.value}</div>
-        </div>
-        <Button size="sm" variant="ghost" onClick={() => onDelete(row.id)}>
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    )
-  }
-
-  if (table === 'declined_suggestions') {
-    return (
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="font-mono">#{row.id}</span>
-            <span>{ts}</span>
-          </div>
-          <div className="text-sm mt-1">{row.text}</div>
-        </div>
-        <Button size="sm" variant="ghost" onClick={() => onDelete(row.id)} title="Un-decline (delete)">
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    )
-  }
-
-  // data_profile_fields
+  const text = entry.content ?? entry.text ?? ''
+  const ts = entry.updated_at ?? entry.created_at ?? ''
+  const isActive = (entry.status ?? 'active') === 'active'
   return (
     <div className="flex items-start gap-3">
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="font-mono">#{row.id}</span>
-          {row.confirmed_by_user ? <Badge>confirmed</Badge> : <Badge variant="outline">unconfirmed</Badge>}
-          <span>{ts}</span>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+          <span className="font-mono">#{entry.id}</span>
+          {entry.status && (
+            <Badge variant={isActive ? 'default' : 'outline'}>{entry.status}</Badge>
+          )}
+          {entry.importance != null && (
+            <Badge variant="outline">importance {entry.importance}</Badge>
+          )}
+          {entry.confidence != null && (
+            <Badge variant="outline">confidence {entry.confidence}</Badge>
+          )}
+          {entry.scope && <Badge variant="outline">{entry.scope}</Badge>}
+          {entry.superseded_by && (
+            <span>superseded by {entry.superseded_by}</span>
+          )}
+          {ts && <span>{ts}</span>}
         </div>
-        <div className="text-sm mt-1 font-mono">{row.field_path}</div>
-        {row.annotation && (
-          <div className="text-xs text-muted-foreground mt-1">{row.annotation}</div>
-        )}
+        <div className="text-sm mt-1 whitespace-pre-wrap">{text}</div>
       </div>
-      <Button size="sm" variant="ghost" onClick={() => onDelete(row.id)}>
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+      <div className="flex gap-1.5">
+        {isActive ? (
+          <Button size="sm" variant="outline" onClick={() => onStatus(entry.id, 'archived')}>
+            <Archive className="h-3.5 w-3.5 mr-1" /> Archive
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => onStatus(entry.id, 'active')}>
+            Reactivate
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" onClick={() => onDelete(entry.id)} title="Soft delete">
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
     </div>
   )
 }

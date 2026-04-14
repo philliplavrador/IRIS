@@ -1,74 +1,56 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Loader2, Check, X, RefreshCw, CheckCheck, FileText } from 'lucide-react'
+import { Loader2, Check, X, RefreshCw, CheckCheck, Sparkles } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
 import { Button } from '../ui/button'
-import { Input } from '../ui/input'
 import { Badge } from '../ui/badge'
 import { Card } from '../ui/card'
 import { ScrollArea } from '../ui/scroll-area'
 import { api } from '../../lib/api'
 
-type PendingRow = {
-  id: number
-  kind: string
-  payload: Record<string, any>
-  session_id: string
-  created_at: string
+// Permissive shape — tighten once the daemon settles on a final schema.
+// TODO(phase-10): share this type with api.ts / MemoryInspector.
+type DraftEntry = {
+  id: string
+  memory_type?: string
+  content?: string
+  text?: string
+  status?: string
+  importance?: number
+  confidence?: number
+  session_id?: string
+  created_at?: string
+  [key: string]: any
 }
-
-type DigestEntry = { id: string; text: string; tags?: string[]; refs?: any[] }
-
-type DigestState = {
-  session_id: string
-  focus: string
-  decisions: DigestEntry[]
-  surprises: DigestEntry[]
-  open_questions: DigestEntry[]
-  next_steps: DigestEntry[]
-}
-
-const LIST_FIELDS: Array<keyof DigestState> = [
-  'decisions', 'surprises', 'open_questions', 'next_steps',
-]
 
 export function CurationRitual() {
   const project = useProjectStore((s) => s.activeProject)
-  const [drafts, setDrafts] = useState<string[]>([])
-  const [selectedSession, setSelectedSession] = useState<string | null>(null)
-  const [pending, setPending] = useState<PendingRow[]>([])
-  const [digest, setDigest] = useState<DigestState | null>(null)
-  const [approved, setApproved] = useState<Set<number>>(new Set())
+  // TODO(phase-9): pipe the active memory-session id into the project store
+  // so "Extract from session" can target the current chat. For now we allow
+  // callers to set it manually once the store exposes it.
+  const currentSessionId: string | null = null
+
+  const [drafts, setDrafts] = useState<DraftEntry[]>([])
+  const [approved, setApproved] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [working, setWorking] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
 
-  const loadSessions = useCallback(async () => {
+  const loadDrafts = useCallback(async () => {
     if (!project) return
-    const res = await api.listDigests(project)
-    setDrafts(res.drafts ?? [])
-    if (!selectedSession && res.drafts?.length) {
-      setSelectedSession(res.drafts[res.drafts.length - 1])
-    }
-  }, [project, selectedSession])
-
-  const loadSession = useCallback(async () => {
-    if (!project || !selectedSession) return
     setLoading(true)
     try {
-      const [d, p] = await Promise.all([
-        api.getDraftDigest(project, selectedSession),
-        api.listPending(project, selectedSession),
-      ])
-      setDigest(normalizeDigest(selectedSession, d))
-      setPending(p.pending ?? [])
-      setApproved(new Set((p.pending ?? []).map((r: PendingRow) => r.id)))
-    } finally { setLoading(false) }
-  }, [project, selectedSession])
+      const res = await api.listMemoryEntries({ status: 'draft' })
+      const rows = res.entries ?? []
+      setDrafts(rows)
+      setApproved(new Set(rows.map((r: DraftEntry) => r.id)))
+    } finally {
+      setLoading(false)
+    }
+  }, [project])
 
-  useEffect(() => { loadSessions() }, [loadSessions])
-  useEffect(() => { loadSession() }, [loadSession])
+  useEffect(() => { loadDrafts() }, [loadDrafts])
 
-  function toggle(id: number) {
+  function toggle(id: string) {
     setApproved((s) => {
       const n = new Set(s)
       if (n.has(id)) n.delete(id); else n.add(id)
@@ -76,71 +58,66 @@ export function CurationRitual() {
     })
   }
 
-  async function discardRow(id: number) {
+  async function approveAll() {
     if (!project) return
-    await api.discardPending(project, [id])
-    setApproved((s) => { const n = new Set(s); n.delete(id); return n })
-    await loadSession()
-  }
-
-  async function saveDigest() {
-    if (!project || !selectedSession || !digest) return
-    await api.replaceDraftDigest(project, selectedSession, digest)
-    setStatus('Digest saved.')
-  }
-
-  async function commitAll(finalize: boolean) {
-    if (!project || !selectedSession || !digest) return
+    const ids = Array.from(approved)
+    if (ids.length === 0) {
+      setStatus('No drafts selected for approval.')
+      return
+    }
     setWorking(true)
     setStatus(null)
     try {
-      // Save digest edits first.
-      await api.replaceDraftDigest(project, selectedSession, digest)
-      // Discard rejected rows.
-      const rejected = pending.filter((r) => !approved.has(r.id)).map((r) => r.id)
-      if (rejected.length) await api.discardPending(project, rejected)
-      const approveIds = Array.from(approved)
-      const rep = await api.commitSession(project, selectedSession, {
-        approve_ids: approveIds,
-        finalize_digest: finalize,
-      })
-      setStatus(`Committed ${rep.committed}${finalize ? ', digest finalized' : ''}.`)
-      await loadSession()
-      await loadSessions()
+      const rep = await api.commitMemoryEntries(ids, currentSessionId ?? undefined)
+      const committed = rep?.committed ?? ids.length
+      setStatus(`Committed ${committed} entr${committed === 1 ? 'y' : 'ies'}.`)
+      await loadDrafts()
     } catch (e: any) {
-      setStatus(`Failed: ${e.message}`)
+      setStatus(`Failed: ${e?.message ?? String(e)}`)
     }
     setWorking(false)
   }
 
-  function patchDigest(patch: Partial<DigestState>) {
-    setDigest((d) => d ? { ...d, ...patch } : d)
+  async function rejectSelected() {
+    if (!project) return
+    // "Reject" = discard all drafts NOT currently approved.
+    const rejectIds = drafts.filter((d) => !approved.has(d.id)).map((d) => d.id)
+    if (rejectIds.length === 0) {
+      setStatus('Nothing to reject — all drafts are approved.')
+      return
+    }
+    setWorking(true)
+    setStatus(null)
+    try {
+      await api.discardMemoryEntries(rejectIds)
+      setStatus(`Discarded ${rejectIds.length}.`)
+      await loadDrafts()
+    } catch (e: any) {
+      setStatus(`Failed: ${e?.message ?? String(e)}`)
+    }
+    setWorking(false)
   }
 
-  function addEntry(field: keyof DigestState) {
-    setDigest((d) => {
-      if (!d) return d
-      const list = [...(d[field] as DigestEntry[]), { id: `new-${Date.now()}`, text: '' }]
-      return { ...d, [field]: list }
-    })
+  async function discardRow(id: string) {
+    if (!project) return
+    await api.discardMemoryEntries([id])
+    setApproved((s) => { const n = new Set(s); n.delete(id); return n })
+    await loadDrafts()
   }
 
-  function editEntry(field: keyof DigestState, idx: number, text: string) {
-    setDigest((d) => {
-      if (!d) return d
-      const list = [...(d[field] as DigestEntry[])]
-      list[idx] = { ...list[idx], text }
-      return { ...d, [field]: list }
-    })
-  }
-
-  function removeEntry(field: keyof DigestState, idx: number) {
-    setDigest((d) => {
-      if (!d) return d
-      const list = [...(d[field] as DigestEntry[])]
-      list.splice(idx, 1)
-      return { ...d, [field]: list }
-    })
+  async function extractFromSession() {
+    if (!currentSessionId) return
+    setWorking(true)
+    setStatus(null)
+    try {
+      const rep = await api.extractSessionMemories(currentSessionId)
+      const n = rep?.extracted ?? rep?.count ?? 0
+      setStatus(`Extracted ${n} draft${n === 1 ? '' : 's'}.`)
+      await loadDrafts()
+    } catch (e: any) {
+      setStatus(`Failed: ${e?.message ?? String(e)}`)
+    }
+    setWorking(false)
   }
 
   if (!project) {
@@ -150,18 +127,20 @@ export function CurationRitual() {
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 pt-4 pb-2 flex items-center gap-3 border-b">
-        <FileText className="h-4 w-4 text-primary" />
-        <span className="text-xs text-muted-foreground">Session draft</span>
-        <select
-          className="text-xs bg-background border rounded px-2 py-1 font-mono"
-          value={selectedSession ?? ''}
-          onChange={(e) => setSelectedSession(e.target.value || null)}
-        >
-          <option value="">—</option>
-          {drafts.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <span className="text-xs text-muted-foreground">
+          {drafts.length} draft{drafts.length === 1 ? '' : 's'}
+        </span>
         <div className="flex-1" />
-        <Button size="sm" variant="outline" onClick={() => { loadSessions(); loadSession() }}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={extractFromSession}
+          disabled={!currentSessionId || working}
+          title={currentSessionId ? 'Extract memories from the active session' : 'No active memory session'}
+        >
+          <Sparkles className="h-3.5 w-3.5 mr-1" /> Extract from session
+        </Button>
+        <Button size="sm" variant="outline" onClick={loadDrafts}>
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -173,74 +152,29 @@ export function CurationRitual() {
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
             </div>
           )}
-          {!loading && !selectedSession && (
-            <div className="text-sm text-muted-foreground">No draft sessions. A draft is created automatically as you work.</div>
+          {!loading && drafts.length === 0 && (
+            <div className="text-sm text-muted-foreground">
+              No draft memory entries. Run extraction on a finished session to populate this list.
+            </div>
           )}
 
-          {digest && (
-            <Card className="p-5 space-y-4">
-              <div>
-                <h3 className="text-sm font-semibold">Draft digest</h3>
-                <p className="text-xs text-muted-foreground">Edit the auto-drafted focus and lists. Saved on commit or via the save button.</p>
-              </div>
-              <div>
-                <label className="text-xs font-medium">Focus</label>
-                <Input
-                  value={digest.focus}
-                  onChange={(e) => patchDigest({ focus: e.target.value })}
-                  placeholder="One sentence summary of what this session was about."
-                  className="text-sm mt-1"
-                />
-              </div>
-              {LIST_FIELDS.map((f) => (
-                <div key={f}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-medium capitalize">{String(f).replace('_', ' ')}</label>
-                    <Button size="sm" variant="ghost" onClick={() => addEntry(f)}>+ add</Button>
-                  </div>
-                  <div className="space-y-1.5">
-                    {(digest[f] as DigestEntry[]).map((e, i) => (
-                      <div key={e.id + i} className="flex gap-2">
-                        <Input
-                          value={e.text}
-                          onChange={(ev) => editEntry(f, i, ev.target.value)}
-                          className="text-xs h-8 flex-1"
-                        />
-                        <Button size="sm" variant="ghost" onClick={() => removeEntry(f, i)}>
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    ))}
-                    {(digest[f] as DigestEntry[]).length === 0 && (
-                      <div className="text-[11px] text-muted-foreground italic">empty</div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              <div>
-                <Button size="sm" variant="outline" onClick={saveDigest}>Save digest only</Button>
-              </div>
-            </Card>
-          )}
-
-          {selectedSession && (
+          {drafts.length > 0 && (
             <Card className="p-5 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold">Pending proposals</h3>
-                  <p className="text-xs text-muted-foreground">L3 writes IRIS queued during the session. Uncheck to reject.</p>
+                  <h3 className="text-sm font-semibold">Draft memory entries</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Uncheck to mark for rejection. Approve commits selected entries; Reject discards the rest.
+                  </p>
                 </div>
                 <div className="flex gap-1.5">
-                  <Button size="sm" variant="outline" onClick={() => setApproved(new Set(pending.map((r) => r.id)))}>
+                  <Button size="sm" variant="outline" onClick={() => setApproved(new Set(drafts.map((r) => r.id)))}>
                     <CheckCheck className="h-3.5 w-3.5 mr-1" /> All
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => setApproved(new Set())}>None</Button>
                 </div>
               </div>
-              {pending.length === 0 && (
-                <div className="text-xs text-muted-foreground">No pending proposals for this session.</div>
-              )}
-              {groupByKind(pending).map(([kind, rows]) => (
+              {groupByType(drafts).map(([kind, rows]) => (
                 <div key={kind}>
                   <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">{kind}</div>
                   <div className="space-y-1.5">
@@ -253,10 +187,14 @@ export function CurationRitual() {
                           className="mt-1"
                         />
                         <div className="flex-1 min-w-0 text-xs">
-                          <div className="font-mono text-[10px] text-muted-foreground">#{r.id}</div>
-                          <ProposalBody kind={r.kind} payload={r.payload} />
+                          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground flex-wrap">
+                            <span className="font-mono">#{r.id}</span>
+                            {r.importance != null && <Badge variant="outline">imp {r.importance}</Badge>}
+                            {r.confidence != null && <Badge variant="outline">conf {r.confidence}</Badge>}
+                          </div>
+                          <div className="mt-1 whitespace-pre-wrap">{r.content ?? r.text ?? ''}</div>
                         </div>
-                        <Button size="sm" variant="ghost" onClick={() => discardRow(r.id)} title="Discard permanently">
+                        <Button size="sm" variant="ghost" onClick={() => discardRow(r.id)} title="Discard">
                           <X className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -267,15 +205,15 @@ export function CurationRitual() {
             </Card>
           )}
 
-          {selectedSession && (
+          {drafts.length > 0 && (
             <div className="flex items-center gap-3">
-              <Button onClick={() => commitAll(false)} disabled={working} variant="outline">
+              <Button onClick={approveAll} disabled={working}>
                 {working ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Check className="h-3.5 w-3.5 mr-1.5" />}
-                Commit (keep draft)
+                Approve selected
               </Button>
-              <Button onClick={() => commitAll(true)} disabled={working}>
-                {working ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Check className="h-3.5 w-3.5 mr-1.5" />}
-                Commit &amp; finalize
+              <Button onClick={rejectSelected} disabled={working} variant="outline">
+                {working ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <X className="h-3.5 w-3.5 mr-1.5" />}
+                Reject unchecked
               </Button>
               {status && <span className="text-xs text-muted-foreground">{status}</span>}
             </div>
@@ -286,35 +224,12 @@ export function CurationRitual() {
   )
 }
 
-function ProposalBody({ kind, payload }: { kind: string; payload: any }) {
-  if (kind === 'decision' || kind === 'goal' || kind === 'declined') {
-    return <div>{payload.text}</div>
-  }
-  if (kind === 'fact') {
-    return <div><span className="font-mono">{payload.key}</span> = {payload.value}</div>
-  }
-  if (kind === 'profile_annotation') {
-    return <div><span className="font-mono">{payload.field_path}</span> — {payload.annotation}</div>
-  }
-  return <pre className="text-[10px] whitespace-pre-wrap">{JSON.stringify(payload, null, 2)}</pre>
-}
-
-function groupByKind(rows: PendingRow[]): Array<[string, PendingRow[]]> {
-  const m = new Map<string, PendingRow[]>()
+function groupByType(rows: DraftEntry[]): Array<[string, DraftEntry[]]> {
+  const m = new Map<string, DraftEntry[]>()
   for (const r of rows) {
-    if (!m.has(r.kind)) m.set(r.kind, [])
-    m.get(r.kind)!.push(r)
+    const k = r.memory_type ?? 'entry'
+    if (!m.has(k)) m.set(k, [])
+    m.get(k)!.push(r)
   }
   return Array.from(m.entries())
-}
-
-function normalizeDigest(session_id: string, raw: any): DigestState {
-  return {
-    session_id,
-    focus: raw?.focus ?? '',
-    decisions: raw?.decisions ?? [],
-    surprises: raw?.surprises ?? [],
-    open_questions: raw?.open_questions ?? [],
-    next_steps: raw?.next_steps ?? [],
-  }
 }
