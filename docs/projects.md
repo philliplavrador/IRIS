@@ -1,268 +1,220 @@
-# IRIS projects
+# IRIS Project Workspaces
 
-A **project** is a durable analysis workspace. Each project bundles references, per-project config, cached outputs, a living report, and a structured Claude history file. Projects are gitignored except for a committed `TEMPLATE/` skeleton and this documentation.
+A **project** is a self-contained, portable analysis workspace. Every project bundles its own config, memory, datasets, artifacts, operation catalog, and runtime database under a single directory. Copy the directory to back up, move, or share the project — no cross-project dependencies exist.
 
-The goal is for the Claude analysis agent to feel like a research partner that can resume your work later — not an amnesiac code generator that forgets everything the moment the conversation ends.
+Projects live under `projects/<project-id>/`. Only the committed `TEMPLATE/` skeleton, `projects/README.md`, `projects/CLAUDE.md`, and `projects/.gitignore` are tracked in git. Every real project is gitignored.
+
+The authoritative design reference is [`IRIS Memory Restructure.md` §6](../IRIS%20Memory%20Restructure.md) (Filesystem Layout) and §7 (Database Schema). This document is the human-facing contract: what exists on disk, what the lifecycle commands do, and how to read the truth.
+
+---
 
 ## Layout
 
 ```
 projects/
-├── README.md                   (committed; user-facing explainer)
-├── CLAUDE.md                   (committed; agent navigation gateway)
-├── .gitignore                  (committed; ignores everything except TEMPLATE + README)
-├── TEMPLATE/                   (committed scaffold; copied on `iris project new`)
+├── .gitignore                        (committed — ignores everything except TEMPLATE + scaffolding)
+├── README.md                         (committed — user-facing intro)
+├── CLAUDE.md                         (committed — agent nav gateway)
+├── TEMPLATE/                         (committed — copied by `iris project new`)
 │   ├── CLAUDE.md
-│   ├── claude_config.yaml
-│   ├── claude_history.md
-│   ├── report.md
-│   ├── claude_references/
-│   │   └── .gitkeep
-│   ├── user_references/
-│   │   └── .gitkeep
-│   └── output/
-│       └── .gitkeep
-└── <your-project>/             (gitignored; created via `iris project new`)
-    ├── CLAUDE.md               (same contents as TEMPLATE's)
-    ├── claude_config.yaml      (filled with name / description / created_at)
-    ├── claude_history.md       (structured memory; see schema below)
-    ├── report.md               (living writeup; user + agent collaborate)
-    ├── claude_references/      (agent-gathered refs; web fetches, summaries)
-    ├── user_references/        (user-placed refs; PDFs, notes, code)
-    ├── output/                 (session directories land here)
-    │   └── 2026-04-10_session_001_<label>/
-    │       ├── manifest.json
-    │       ├── plot_001_*.png
-    │       └── plot_001_*.png.json
-    └── .cache/                 (project-scoped PipelineCache; sibling of output/)
+│   ├── config.toml                   (seed config; name/description filled in on create)
+│   ├── memory/
+│   │   ├── PROJECT.md                (project core memory; regenerated from SQLite)
+│   │   ├── DECISIONS.md              (decision & conclusion register; regenerated)
+│   │   ├── OPEN_QUESTIONS.md         (open questions register; regenerated)
+│   │   └── DATASETS/                 (one dataset card per registered dataset)
+│   ├── datasets/
+│   │   ├── raw/                      (original uploads, content-addressed by sha256)
+│   │   └── derived/                  (transformed / profiled versions)
+│   ├── artifacts/                    (content-addressed outputs: plots, reports, caches)
+│   ├── ops/                          (project-scoped operations, versioned by semver)
+│   └── indexes/                      (vector / FTS auxiliary indexes — V2+)
+└── <project-id>/                     (gitignored — created from TEMPLATE)
+    ├── config.toml
+    ├── iris.sqlite                   (runtime; WAL-mode; programmatic truth)
+    ├── memory/
+    │   ├── PROJECT.md
+    │   ├── DECISIONS.md
+    │   ├── OPEN_QUESTIONS.md
+    │   └── DATASETS/
+    │       └── <dataset-id>.md
+    ├── datasets/
+    │   ├── raw/<dataset-id>/<sha256>.<ext>
+    │   └── derived/<dataset-id>/<sha256>.<ext>
+    ├── artifacts/<sha256>/…
+    ├── ops/<op-name>/v<semver>/
+    │   ├── op.py
+    │   ├── schema.json
+    │   ├── tests/
+    │   └── README.md
+    └── indexes/embeddings.<format>   (optional, V2+)
 ```
 
-The active project is tracked in `.iris/active_project` (one-line file containing the project name) at the repo root. This file is gitignored so every checkout starts with no active project until the user opens one.
+`iris.sqlite` does **not** live in `TEMPLATE/`. It is created at project-open time by `db.connect(project_dir)` when the schema is applied. TEMPLATE ships only the committed scaffolding.
+
+The active project is tracked in `.iris/active_project` at the repo root (gitignored; one line holding the project id). No project is active by default.
+
+---
+
+## The three storage substrates (per project)
+
+Every project mixes three substrates, each with a distinct role. See spec §5.1.
+
+| Substrate | Location | Role | Mutability |
+|---|---|---|---|
+| **SQLite** | `iris.sqlite` | Programmatic truth — events, messages, memory entries, datasets, runs, ops, artifacts metadata | Append-dominant; events are immutable |
+| **Content-addressed FS** | `datasets/`, `artifacts/` | Heavy bytes — original uploads, derived data, plots, reports, cached outputs | Immutable; keyed by `sha256` |
+| **Curated Markdown** | `memory/*.md` | Human view — rendered from SQLite `memory_entries`, `decisions`, `open_questions`, `datasets` | Regenerated; **never edited by hand** |
+
+Rule of thumb: **SQLite is canonical**. Markdown is a render. Files in `datasets/` and `artifacts/` are keyed by hash — referenced from SQLite, never orphaned.
+
+---
 
 ## Lifecycle
 
 ```bash
-# Create + activate a new project
+# Create + activate a new project (copies TEMPLATE, seeds config.toml, creates iris.sqlite)
 iris project new kinetics-study --description "jGCaMP8m decay analysis" --open
 
-# Plot something — lands in projects/kinetics-study/output/
-iris run "mea_trace(861).butter_bandpass.spectrogram" --window full
-
-# Switch projects
+# Switch the active project
 iris project open other-study
 
-# See all projects; the active one is marked with *
+# List all projects (active one marked)
 iris project list
 
-# Inspect a project's metadata
+# Inspect one project's metadata + stats
 iris project info kinetics-study
 
-# Deactivate the current project (a project must be opened before the next run)
+# Close the active project (no project active until next `open`)
 iris project close
+
+# Delete a project (removes the directory + drops it from the list)
+iris project delete abandoned-study
 ```
 
-## Per-project configuration
+Under the hood (`src/iris/projects/`):
 
-Each project's `claude_config.yaml` can override any of the global `configs/` values for that project only:
+- **create** — copy `TEMPLATE/` to `projects/<id>/`, fill `config.toml`, call `db.init(project_dir)` to apply `schema.sql` and write an initial `projects` row.
+- **open** — validate the directory exists, run pending migrations against `iris.sqlite`, update `.iris/active_project`.
+- **list** — enumerate `projects/*/` (excluding `TEMPLATE/`), read each `config.toml` header.
+- **delete** — remove the directory; the active pointer is cleared if it pointed there.
+- **close** — clear `.iris/active_project`.
 
-```yaml
-name: kinetics-study
-description: jGCaMP8m decay analysis
-created_at: 2026-04-10T14:30:00Z
+`iris.sqlite` is opened lazily by daemon routes and tools; agents never open it directly — they call the memory HTTP API.
 
-# Merged on top of configs/paths.yaml
-paths_overrides: {}
+---
 
-# Merged per-op on top of configs/ops.yaml
-ops_overrides:
-  butter_bandpass:
-    low_hz: 500
-    high_hz: 5000
+## Configuration
 
-# Merged on top of configs/globals.yaml
-globals_overrides:
-  plot_backend: pyqplot
+Two layers of config, both TOML.
 
-# Free-form guidance the analysis agent reads on startup
-agent_notes: "Only use narrow-band analyses for this project; publication figures."
+### Global (`configs/config.toml`)
+
+Repo-wide settings: default model, daemon ports, logging, retrieval knobs, feature flags. Owned by the operator; same for every project. See [configs/CLAUDE.md](../configs/CLAUDE.md).
+
+### Per-project (`projects/<id>/config.toml`)
+
+Project identity + per-project overrides:
+
+```toml
+[project]
+id          = "kinetics-study"
+name        = "Kinetics study"
+description = "jGCaMP8m decay analysis across temperatures"
+created_at  = "2026-04-10T18:22:00Z"
+
+[memory]
+# autonomy / pushback / retrieval dials — overrides the global defaults
+autonomy_level   = "moderate"
+pushback_level   = "high"
+retrieval_k      = 12
+
+[model]
+# optional; falls back to global
+provider = "anthropic"
+name     = "claude-sonnet-4-20250514"
 ```
 
-The override is in-memory — the global `configs/` files are never mutated. Project overrides win over global defaults.
+Resolution order (lowest → highest precedence): hard-coded defaults → `configs/config.toml` → `projects/<id>/config.toml` → explicit CLI / API overrides.
 
-## The `claude_history.md` schema
+---
 
-The history file is the "partner continuity" store. It uses fixed top-level sections with terse dated bullets. Prose is explicitly forbidden.
+## What's committed vs gitignored
 
-```markdown
-# Claude History: kinetics-study
+**Committed** (tracked in git):
+- `projects/README.md`, `projects/CLAUDE.md`, `projects/.gitignore`
+- The entire `projects/TEMPLATE/` directory (scaffolding only — no `iris.sqlite`, no data)
 
-_Last updated: 2026-04-10T14:45:00Z_
+**Gitignored** (everything real):
+- `projects/<id>/` for every id other than `TEMPLATE`
+- `iris.sqlite` and any WAL / SHM sidecars
+- All `datasets/`, `artifacts/`, `indexes/` contents
+- `.iris/active_project` (per-checkout state, at repo root)
 
-## Goals
-- 2026-04-10 - characterize jGCaMP8m rise/decay kinetics on channel 861
+This is enforced by `projects/.gitignore`:
 
-## Open Questions
-- 2026-04-10 - is the 60 Hz notch biasing the decay fit?
-
-## Decisions
-- 2026-04-10 - use 300-5000 Hz bandpass [reason: narrow-band best SNR]
-
-## Operations Run
-- 2026-04-10 - mea_trace(861).butter_bandpass.spectrogram [session: 2026-04-10_session_001] [status: ok]
-
-## Plots Generated
-- 2026-04-10 - plot_001_mea_trace_861_spectrogram_0.png [dsl: mea_trace(861).butter_bandpass.spectrogram]
-
-## References Added
-- 2026-04-10 - zhang_jgcamp8_2023.md [source: web] [decay time constant]
-
-## Next Steps
-- 2026-04-10 - cross-correlate against ROI 12
+```
+*
+!.gitignore
+!README.md
+!CLAUDE.md
+!TEMPLATE/
+!TEMPLATE/**
 ```
 
-### Why this format (instead of JSONL or prose)
+Heavy bytes (raw recordings, plots, caches) never enter git. Back up a project by tarring its directory.
 
-- **Section names are the type tags.** The agent can Read the file and jump straight to `## Goals` or `## Next Steps` without parsing free-form text.
-- **Terse bracketed metadata** avoids repeating field names, which JSONL duplicates per line.
-- **ISO dates first** make recency queries a simple sort.
-- **Markdown renders inline** in `report.md` references and is safe to hand-edit.
+---
 
-The seven sections are defined in `HISTORY_SECTIONS` in [`src/iris/projects.py`](../src/iris/projects.py) and enforced by `append_history()` (raises `ValueError` on unknown sections). Do not invent new top-level sections.
+## Memory files
 
-## References
+The `memory/` subtree is the **human-readable view** of curated knowledge. Every file is regenerated from `iris.sqlite` by the views renderer (`src/iris/projects/views.py` post-REVAMP). Editing these files by hand has no effect on the agent's memory — the next render overwrites them.
 
-Each project has two reference directories with different ownership:
-
-| Directory | Who writes to it | What lives there |
+| File | Backed by | Contents |
 |---|---|---|
-| `user_references/` | You (manually) | PDFs, hand-written notes, related code, anything you want the agent to treat as ground truth |
-| `claude_references/` | The analysis agent | Stub markdown files summarizing web pages, papers, GitHub repos, or training-data-derived claims |
+| `PROJECT.md` | `projects`, top `memory_entries` (goal / context), active `datasets` summary | The project's identity card + active objectives + current datasets |
+| `DECISIONS.md` | `decisions` table (memory_entries of type `decision`/`conclusion`) | Timestamped register of settled choices, with rationale + linked evidence events |
+| `OPEN_QUESTIONS.md` | `open_questions` (memory_entries of type `question`) | Unresolved threads — each with status, linked runs, proposed next steps |
+| `DATASETS/<dataset-id>.md` | `datasets`, `dataset_versions`, profile annotations | Per-dataset card: shape, column roles, confirmed annotations, provenance |
 
-### Adding a reference
+Writes flow SQLite-first: an agent calls `propose_memory_entry` → user approves via `commit_memory_entry` → the views renderer rewrites the affected markdown. The event chain in `events` is the actual history; markdown is a projection.
 
-Via the CLI (the agent uses these same commands):
-
-```bash
-# A web source — stub lands in claude_references/
-iris project reference add "https://doi.org/10.1371/journal.pone.0312438" \
-    --source web \
-    --title "van der Molen et al. (2024) RT-Sort" \
-    --summary "Real-time spike sorting CNN for MaxWell MEAs; reports sub-ms latency." \
-    --tag rt-sort --tag spike-sorting
-
-# A user-placed file (the file itself must already be in user_references/)
-iris project reference add "zhang-2023.pdf" \
-    --source user \
-    --summary "Primary paper on jGCaMP8 kinetics"
-
-# A training-data claim (agent flags it as unverified)
-iris project reference add "biexponential-decay-fit" \
-    --source claude \
-    --summary "Biexponential fits are conventional for GCaMP variants." \
-    --tag kinetics
-```
-
-### Reference stub format
-
-Every reference written by the agent is a markdown file with YAML frontmatter:
-
-```markdown
----
-source: web
-title: van der Molen et al. (2024) RT-Sort
-added_at: 2026-04-10T14:30:00Z
-tags:
-  - rt-sort
-  - spike-sorting
-summary: Real-time spike sorting CNN for MaxWell MEAs; reports sub-ms latency.
-url: https://doi.org/10.1371/journal.pone.0312438
 ---
 
-# van der Molen et al. (2024) RT-Sort
+## Seeing the truth
 
-Real-time spike sorting CNN for MaxWell MEAs; reports sub-ms latency.
-```
-
-For user-placed files, the sidecar `<file>.ref.md` lives next to the file and records the same frontmatter fields (with `file:` instead of `url:`).
-
-### Citation contract
-
-The analysis agent is required to cite references for any analytic claim it makes. Claims that come from the model's training data (rather than a saved reference) must be prefixed `[training-data claim]`. See [`docs/analysis-assistant.md`](analysis-assistant.md) § "Rule 2" for the full contract.
-
-### Listing and inspecting
+When the markdown disagrees with behaviour, trust SQLite.
 
 ```bash
-iris project reference list                        # tabular
-iris project reference list --json                  # machine-readable
-iris project reference show "van der Molen"       # substring match on title
-iris project reference show claude_references/van-der-molen-2024.md
+# Open the canonical store for a project (read-only recommended)
+sqlite3 projects/<id>/iris.sqlite
+
+# Verify the event chain is intact
+SELECT event_id, type, ts FROM events ORDER BY ts LIMIT 20;
+
+# See committed memory entries
+SELECT entry_id, kind, status, content FROM memory_entries WHERE status = 'committed';
+
+# Force-regenerate markdown views after editing SQLite directly (rare)
+iris project views regenerate
 ```
 
-## Cache semantics
+Rules:
+- **Never** edit `memory/*.md` by hand — the next render overwrites.
+- **Never** delete `iris.sqlite` on a live project; use `iris project delete`.
+- **Never** write directly to `datasets/` or `artifacts/` — use the import / run pipeline so the sha256 lands in SQLite.
+- Agents read memory only through the daemon's memory HTTP API, never by opening `iris.sqlite` directly.
 
-IRIS has **two** caches per project, working together:
-
-### Intermediate data cache — `projects/<name>/.cache/`
-
-This is the existing two-tier `PipelineCache` from [`src/iris/engine.py`](../src/iris/engine.py), now scoped per-project. Cache keys are content-addressed (DSL + param values + input file mtimes), so moving the cache directory simply creates a fresh cache for the new project the first time. It caches *pickled intermediate computed results* (e.g. a filtered trace, a spectrogram matrix) so repeat runs don't re-compute.
-
-### Plot dedup cache — `projects/<name>/output/`
-
-The output folder itself doubles as a dedup cache: `iris run` checks for an existing sidecar JSON matching the current DSL + source fingerprints + window *before* creating a new session, and short-circuits with the cached path if found. You'll see:
-
-```
-$ iris run "mea_trace(861).butter_bandpass.spectrogram" --window 14487.05,44352.95
-project: my-analysis
-cached: identical plot already exists in this project
-  plot:    projects/my-analysis/output/2026-04-10_session_001_test-b/plot_001_mea_trace_861_butter_bandpass_spectrogram_0.png
-  sidecar: projects/my-analysis/output/2026-04-10_session_001_test-b/plot_001_mea_trace_861_butter_bandpass_spectrogram_0.png.json
-  session: 2026-04-10_session_001_test-b
-  window:  [14487.05, 44352.95] (from sidecar)
-  rendered: 2026-04-10T14:30:00
-
-pass --force to re-run and create a new version.
-```
-
-**Matching rules:**
-- **DSL** — literal string comparison (inline overrides like `op(low_hz=300)` are part of the string)
-- **Sources** — mtime + size for every file in `configs/paths.yaml` (1-second mtime tolerance)
-- **Window** — literal `[start, end]` equality, OR permissive "same sources" match when the query window is `"full"` or missing (same data → same full duration)
-
-**Bypassing the cache:**
-- `iris run --force "<DSL>"` — always run, never check
-- Editing the input data file invalidates matching sidecars automatically (mtime change)
-
-**Explicit inspection:**
-```bash
-iris project find-plot "mea_trace(861).spectrogram" --window 14487.05,44352.95
-iris project find-plot "mea_trace(861).spectrogram" --json   # machine-readable
-iris project find-plot "mea_trace(861).spectrogram" --project my-analysis  # non-active project
-```
-
-### Together
-
-The two caches compose: the plot dedup cache short-circuits re-runs entirely (skipping the engine), and the intermediate data cache makes any remaining re-runs cheap. In practice, a typical conversation looks like:
-
-1. First run of a new DSL → engine computes from scratch → plot saved → sidecar written
-2. Re-run of the same DSL in the same project → `cached:` short-circuit (no engine call)
-3. Re-run with `--force` → engine re-runs but hits the data cache for intermediate results → new plot saved to a new session
-4. Re-run after the user edited the source file → sources fingerprint mismatch → both caches miss → engine re-runs from scratch, new plot
-
-## The `report.md` file
-
-Each project has a `report.md` — your living writeup. When a plot turns out to be worth keeping, ask the analysis agent to add a section with:
-
-- the reason the plot was generated
-- what the results actually show
-- what they insinuate about the underlying biology or methodology
-- citations from `claude_references/` or `user_references/` that back the interpretation
-
-Phase 2 formalizes this into an explicit agent workflow with citation gates.
+---
 
 ## See also
 
-- [`../src/iris/projects.py`](../src/iris/projects.py) — project lifecycle API
-- [`../projects/CLAUDE.md`](../projects/CLAUDE.md) — agent nav gateway
-- [`../projects/README.md`](../projects/README.md) — user-facing quick reference
-- [`operations.md`](operations.md) — op catalog (and, in Phase 3, the "adding a new operation" checklist)
-- [`agent-guide.md`](agent-guide.md) — Claude Code workflow reference
+- [architecture.md](architecture.md) — system architecture (daemon / webapp / engine)
+- [operations.md](operations.md) — operation math reference
+- [../IRIS Memory Restructure.md](../IRIS%20Memory%20Restructure.md) — full memory-system spec (§6 layout, §7 schema)
+- [../REVAMP.md](../REVAMP.md) — active task ledger for the memory rewrite
+- [../projects/CLAUDE.md](../projects/CLAUDE.md) — projects directory nav
+- [../projects/TEMPLATE/CLAUDE.md](../projects/TEMPLATE/CLAUDE.md) — per-project nav stub
+- [../src/iris/projects/CLAUDE.md](../src/iris/projects/CLAUDE.md) — projects module map
+- [../src/iris/daemon/CLAUDE.md](../src/iris/daemon/CLAUDE.md) — daemon (memory HTTP API)
+- [../configs/CLAUDE.md](../configs/CLAUDE.md) — global config

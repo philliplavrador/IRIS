@@ -1138,7 +1138,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 10.2 — Rewrite docs/projects.md
+### [x] Task 10.2 — Rewrite docs/projects.md
 
 **Phase**: 10 · **Effort**: M · **Blocks**: 10.4
 
