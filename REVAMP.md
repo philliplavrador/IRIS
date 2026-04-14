@@ -297,7 +297,7 @@ Goal: stand up `iris.sqlite` per spec §7, scaffold every CLAUDE.md the implemen
 
 ---
 
-### [ ] Task 1.3 — db.py: connection helper + schema migration
+### [x] Task 1.3 — db.py: connection helper + schema migration
 
 **Phase**: 1 · **Effort**: M · **Blocks**: 1.5, 2.1+
 
