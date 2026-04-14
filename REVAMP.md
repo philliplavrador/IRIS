@@ -73,7 +73,7 @@ Goal: clear every file destined for deletion before any rewrite begins. Build wi
 
 ---
 
-### [ ] Task 0.2 — Delete superseded docs
+### [x] Task 0.2 — Delete superseded docs
 
 **Phase**: 0 · **Effort**: S · **Blocks**: none
 
