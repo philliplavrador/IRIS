@@ -27,6 +27,15 @@ export async function daemonPost<T = unknown>(path: string, body: unknown): Prom
   return res.json() as Promise<T>
 }
 
+export async function daemonDelete<T = unknown>(path: string): Promise<T> {
+  const res = await fetch(`${DAEMON_URL}${path}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Daemon DELETE ${path}: ${res.status} ${text}`)
+  }
+  return res.json() as Promise<T>
+}
+
 export async function isDaemonHealthy(): Promise<boolean> {
   try {
     const res = await fetch(`${DAEMON_URL}/health`, { signal: AbortSignal.timeout(2000) })

@@ -14,7 +14,60 @@ export const api = {
   abortAgent: () =>
     fetch(`${BASE}/api/agent/abort`, { method: 'POST' }),
 
-  // Projects
+  // -- Canonical project lifecycle (REVAMP Task 1.10) ------------------
+  // Names mirror the six daemon endpoints so the frontend, Express proxy,
+  // and Python daemon agree. `projectList`/`projectOpen`/etc. are kept as
+  // aliases for components that have not migrated yet.
+
+  listProjects: async (): Promise<ProjectInfo[]> => {
+    const res = await fetch(`${BASE}/api/projects`)
+    return res.json()
+  },
+
+  createProject: async (name: string, description?: string): Promise<ProjectInfo | null> => {
+    const res = await fetch(`${BASE}/api/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description }),
+    })
+    if (!res.ok) return null
+    return res.json()
+  },
+
+  openProject: async (name: string): Promise<ProjectInfo | null> => {
+    // Activates as a side-effect (matches daemon GET /projects/{name} behaviour).
+    const res = await fetch(`${BASE}/api/projects/by-name/${encodeURIComponent(name)}`)
+    if (!res.ok) return null
+    return res.json()
+  },
+
+  deleteProject: async (name: string): Promise<boolean> => {
+    const res = await fetch(`${BASE}/api/projects/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    })
+    return res.ok
+  },
+
+  getActiveProject: async (): Promise<ProjectInfo | null> => {
+    const res = await fetch(`${BASE}/api/projects/active`)
+    if (!res.ok) return null
+    const data = (await res.json()) as { active: ProjectInfo | null }
+    return data.active
+  },
+
+  setActiveProject: async (name: string): Promise<ProjectInfo | null> => {
+    const res = await fetch(`${BASE}/api/projects/active`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { active: ProjectInfo | null }
+    return data.active
+  },
+
+  // -- Legacy aliases (kept until callers migrate) ---------------------
+
   projectList: async (): Promise<ProjectInfo[]> => {
     const res = await fetch(`${BASE}/api/projects`)
     return res.json()

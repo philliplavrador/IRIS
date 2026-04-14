@@ -5,8 +5,22 @@ import { join } from 'path'
 import multer from 'multer'
 import archiver from 'archiver'
 import { getProjectsDir } from '../lib/paths.js'
-import { daemonPost } from '../services/daemon-client.js'
+import { daemonGet, daemonPost, daemonDelete } from '../services/daemon-client.js'
 import type { PlotWatcher, ReportWatcher } from '../services/watchers.js'
+
+interface DaemonProjectInfo {
+  name: string
+  path: string
+  created_at: string | null
+  description: string | null
+  n_references: number
+  n_outputs: number
+  agent_notes?: string
+}
+
+interface DaemonActiveResponse {
+  active: DaemonProjectInfo | null
+}
 
 interface Watchers {
   plotWatcher: PlotWatcher
@@ -16,71 +30,104 @@ interface Watchers {
 export function registerProjectRoutes(app: Express, watchers: Watchers): void {
   const projectsDir = getProjectsDir()
 
+  // -- Canonical project lifecycle (REVAMP Task 1.10) ----------------------
+  // Proxies the six daemon endpoints from `src/iris/daemon/routes/projects.py`.
+  // The Express layer adds nothing but watcher wiring on open + a couple of
+  // legacy aliases below for the current frontend.
+
   app.get('/api/projects', async (_req, res) => {
     try {
-      const entries = await readdir(projectsDir, { withFileTypes: true })
-      const projects = []
-      for (const entry of entries) {
-        if (!entry.isDirectory() || entry.name === 'TEMPLATE' || entry.name.startsWith('.')) continue
-        const projectDir = `${projectsDir}/${entry.name}`
-        let n_outputs = 0
-        try {
-          const outputFiles = await readdir(`${projectDir}/output`)
-          n_outputs = outputFiles.filter(f => /\.(png|pdf|svg)$/i.test(f)).length
-        } catch {}
-        let n_references = 0
-        for (const refDir of ['claude_references', 'user_references']) {
-          try {
-            const refs = await readdir(`${projectDir}/${refDir}`)
-            n_references += refs.filter(f => !f.startsWith('.')).length
-          } catch {}
-        }
-        let description: string | null = null
-        try {
-          const configRaw = await readFile(`${projectDir}/claude_config.yaml`, 'utf-8')
-          const descMatch = configRaw.match(/description:\s*(.+)/)
-          if (descMatch) description = descMatch[1].trim()
-        } catch {}
-        projects.push({ name: entry.name, path: projectDir, created_at: null, description, n_references, n_outputs })
-      }
+      const projects = await daemonGet<DaemonProjectInfo[]>('/api/projects')
       res.json(projects)
-    } catch {
+    } catch (err: any) {
+      // Daemon down: fall back to empty list so the projects page still renders.
+      console.error('[projects] daemon list failed:', err.message)
       res.json([])
     }
   })
 
+  // GET /api/projects/active -> { active: ProjectInfo | null }
+  app.get('/api/projects/active', async (_req, res) => {
+    try {
+      const data = await daemonGet<DaemonActiveResponse>('/api/projects/active')
+      res.json(data)
+    } catch (err: any) {
+      res.status(502).json({ error: err.message })
+    }
+  })
+
+  // POST /api/projects/active body { name } -> { active: ProjectInfo }
+  app.post('/api/projects/active', async (req, res) => {
+    try {
+      const { name } = req.body as { name: string }
+      const data = await daemonPost<DaemonActiveResponse>('/api/projects/active', { name })
+      // Wire watchers for the newly active project.
+      watchers.plotWatcher.watchProject(`${projectsDir}/${name}`)
+      watchers.reportWatcher.watchProject(name, projectsDir)
+      res.json(data)
+    } catch (err: any) {
+      res.status(502).json({ error: err.message })
+    }
+  })
+
+  // POST /api/projects body { name, description? } -> ProjectInfo
+  app.post('/api/projects', async (req, res) => {
+    try {
+      const { name, description } = req.body as { name: string; description?: string }
+      const info = await daemonPost<DaemonProjectInfo>('/api/projects', { name, description })
+      res.json(info)
+    } catch (err: any) {
+      res.status(502).json({ error: err.message })
+    }
+  })
+
+  // GET /api/projects/by-name/:name -> ProjectInfo (open + activate)
+  // Note: distinct path prefix (`by-name`) avoids colliding with the static
+  // sub-routes (/active, /upload, /files, /info, /behavior, …) declared below.
+  app.get('/api/projects/by-name/:name', async (req, res) => {
+    try {
+      const info = await daemonGet<DaemonProjectInfo>(`/api/projects/${encodeURIComponent(req.params.name)}`)
+      watchers.plotWatcher.watchProject(`${projectsDir}/${req.params.name}`)
+      watchers.reportWatcher.watchProject(req.params.name, projectsDir)
+      res.json(info)
+    } catch (err: any) {
+      res.status(502).json({ error: err.message })
+    }
+  })
+
+  // DELETE /api/projects/:name -> { ok: true, name }
+  app.delete('/api/projects/:name', async (req, res) => {
+    try {
+      const data = await daemonDelete<{ ok: boolean; name: string }>(`/api/projects/${encodeURIComponent(req.params.name)}`)
+      res.json(data)
+    } catch (err: any) {
+      res.status(502).json({ error: err.message })
+    }
+  })
+
+  // -- Legacy aliases (kept until the frontend migrates fully) -------------
+  // The existing ProjectsPage still posts to these; route them through the
+  // canonical daemon endpoints so behavior stays consistent.
+
   app.post('/api/projects/open', async (req, res) => {
     try {
-      const name = req.body.name
-      const projectPath = `${projectsDir}/${name}`
-      watchers.plotWatcher.watchProject(projectPath)
+      const { name } = req.body as { name: string }
+      await daemonPost<DaemonActiveResponse>('/api/projects/active', { name })
+      watchers.plotWatcher.watchProject(`${projectsDir}/${name}`)
       watchers.reportWatcher.watchProject(name, projectsDir)
       res.json({ ok: true })
     } catch (err: any) {
-      res.status(500).json({ error: err.message })
+      res.status(502).json({ error: err.message })
     }
   })
 
   app.post('/api/projects/create', async (req, res) => {
     try {
-      const { name, description } = req.body
-      const projectDir = `${projectsDir}/${name}`
-      // Copy from TEMPLATE
-      const templateDir = `${projectsDir}/TEMPLATE`
-      const { cpSync } = await import('fs')
-      cpSync(templateDir, projectDir, { recursive: true })
-      if (description) {
-        const configPath = `${projectDir}/claude_config.yaml`
-        try {
-          let config = await readFile(configPath, 'utf-8')
-          config = config.replace(/description:.*/, `description: ${description}`)
-          const { writeFileSync } = await import('fs')
-          writeFileSync(configPath, config)
-        } catch {}
-      }
+      const { name, description } = req.body as { name: string; description?: string }
+      await daemonPost<DaemonProjectInfo>('/api/projects', { name, description })
       res.json({ ok: true })
     } catch (err: any) {
-      res.status(500).json({ error: err.message })
+      res.status(502).json({ error: err.message })
     }
   })
 
@@ -96,10 +143,17 @@ export function registerProjectRoutes(app: Express, watchers: Watchers): void {
 
   app.post('/api/projects/delete', async (req, res) => {
     try {
-      await rm(`${projectsDir}/${req.body.name}`, { recursive: true, force: true })
+      const { name } = req.body as { name: string }
+      await daemonDelete<{ ok: boolean }>(`/api/projects/${encodeURIComponent(name)}`)
       res.json({ ok: true })
     } catch (err: any) {
-      res.status(500).json({ error: err.message })
+      // Last-resort fallback if daemon refuses; preserve old behavior.
+      try {
+        await rm(`${projectsDir}/${req.body.name}`, { recursive: true, force: true })
+        res.json({ ok: true })
+      } catch (err2: any) {
+        res.status(500).json({ error: err2.message })
+      }
     }
   })
 

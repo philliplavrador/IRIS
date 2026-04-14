@@ -406,7 +406,7 @@ Skip — folded into 1.5 and 1.6.
 
 ---
 
-### [ ] Task 1.10 — Express proxy + frontend project flow + Phase 1 E2E
+### [x] Task 1.10 — Express proxy + frontend project flow + Phase 1 E2E
 
 **Phase**: 1 · **Effort**: M · **Blocks**: Phase 2
 
