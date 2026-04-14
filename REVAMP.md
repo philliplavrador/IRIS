@@ -376,7 +376,7 @@ Goal: stand up `iris.sqlite` per spec §7, scaffold every CLAUDE.md the implemen
 
 ---
 
-### [ ] Task 1.7 — Reserved (was: project lifecycle — moved into 1.5/1.6)
+### [x] Task 1.7 — Reserved (was: project lifecycle — moved into 1.5/1.6)
 
 Skip — folded into 1.5 and 1.6.
 
