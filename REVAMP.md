@@ -951,7 +951,7 @@ Each call writes corresponding events (`transform_run` for start/complete).
 
 ---
 
-### [ ] Task 7.4 — Tests for runs
+### [x] Task 7.4 — Tests for runs
 
 **Phase**: 7 · **Effort**: M · **Blocks**: 7.5
 
