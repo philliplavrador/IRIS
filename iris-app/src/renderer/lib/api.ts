@@ -410,6 +410,25 @@ export const api = {
   projectExportUrl: (name: string): string =>
     `${BASE}/api/projects/export?name=${encodeURIComponent(name)}`,
 
+  // Runs (Task 7.5)
+  listRuns: async (
+    _project: string,
+    opts?: { sessionId?: string; status?: string; limit?: number },
+  ) => {
+    const qs = new URLSearchParams()
+    if (opts?.sessionId) qs.set('session_id', opts.sessionId)
+    if (opts?.status) qs.set('status', opts.status)
+    if (opts?.limit) qs.set('limit', String(opts.limit))
+    const res = await fetch(`${BASE}/api/memory/runs${qs.toString() ? '?' + qs : ''}`)
+    return res.json()
+  },
+  getRunLineage: async (_project: string, runId: string) => {
+    const res = await fetch(
+      `${BASE}/api/memory/runs/${encodeURIComponent(runId)}/lineage`,
+    )
+    return res.json()
+  },
+
   // Plot image URL — served via Express static
   plotUrl: (plotPath: string): string => {
     // Convert absolute path to relative URL under /plots
