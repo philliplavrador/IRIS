@@ -1353,7 +1353,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ## Phase 14 — V2: Progressive Summarization
 
-### [ ] Task 14.1 — Session summarization at close + summary-of-summaries
+### [x] Task 14.1 — Session summarization at close + summary-of-summaries
 
 **Phase**: 14 · **Effort**: L · **Blocks**: 14.2
 
