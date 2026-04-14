@@ -415,6 +415,33 @@ export function registerMemoryRoutes(app: Express): void {
     },
   );
 
+  // -- retrieval -------------------------------------------------------
+  app.post("/api/memory/recall", async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost("/api/memory/recall", req.body ?? {}));
+    } catch (e) {
+      forwardError(res, e);
+    }
+  });
+
+  app.get(
+    "/api/memory/should_retrieve",
+    async (req: Request, res: Response) => {
+      try {
+        const qs = new URLSearchParams(
+          req.query as Record<string, string>,
+        ).toString();
+        res.json(
+          await daemonGet(
+            `/api/memory/should_retrieve${qs ? `?${qs}` : ""}`,
+          ),
+        );
+      } catch (e) {
+        forwardError(res, e);
+      }
+    },
+  );
+
   // -- extraction ------------------------------------------------------
   app.post("/api/memory/extract", async (req: Request, res: Response) => {
     try {

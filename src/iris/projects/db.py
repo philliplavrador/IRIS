@@ -25,6 +25,7 @@ See ``IRIS Memory Restructure.md`` §5.1 (Store 1) and §7 for rationale.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Final
@@ -32,6 +33,7 @@ from typing import Final
 __all__ = [
     "DB_FILENAME",
     "SCHEMA_VERSION",
+    "VEC_AVAILABLE",
     "connect",
     "init_schema",
     "current_version",
@@ -42,6 +44,77 @@ DB_FILENAME: Final[str] = "iris.sqlite"
 SCHEMA_VERSION: Final[int] = 1
 
 _SCHEMA_SQL_PATH: Final[Path] = Path(__file__).with_name("schema.sql")
+
+_log = logging.getLogger(__name__)
+
+# Module-level flag indicating whether the sqlite-vec extension has been
+# successfully loaded at least once in this process. Vector-dependent code
+# paths (Phase 11.3+: embedding worker, hybrid retrieval) check this flag
+# and fall back to FTS5-only behaviour when the extension is unavailable.
+#
+# Reasons this may be False:
+# - The ``sqlite_vec`` Python package isn't installed.
+# - The Python build's bundled sqlite3 was compiled without
+#   ``SQLITE_ENABLE_LOAD_EXTENSION`` (common on some Windows Python
+#   distributions). In that case ``conn.enable_load_extension`` raises
+#   ``AttributeError`` / ``sqlite3.NotSupportedError``.
+# - The loadable object for the current platform is missing/corrupt.
+VEC_AVAILABLE: bool = False
+
+# Track whether we've already emitted the "couldn't load sqlite-vec" WARNING
+# so we log it exactly once per process even though ``connect`` is called
+# many times.
+_VEC_LOAD_ATTEMPTED: bool = False
+_VEC_LOAD_WARNED: bool = False
+
+
+def _try_load_vec(conn: sqlite3.Connection) -> None:
+    """Attempt to load sqlite-vec on ``conn``; update ``VEC_AVAILABLE`` once.
+
+    Safe to call on every connect. The first call imports ``sqlite_vec``
+    and tries to enable + load the extension; later calls only re-load on
+    the fresh connection if the first attempt succeeded. Any failure sets
+    ``VEC_AVAILABLE = False`` and logs a single WARNING explaining the
+    fallback path for Phase 11+ vector features.
+    """
+    global VEC_AVAILABLE, _VEC_LOAD_ATTEMPTED, _VEC_LOAD_WARNED
+
+    try:
+        import sqlite_vec  # type: ignore[import-not-found]
+    except ImportError:
+        if not _VEC_LOAD_WARNED:
+            _log.warning(
+                "sqlite-vec not installed; vector retrieval disabled. "
+                "Install with `uv add sqlite-vec` to enable Phase 11 "
+                "hybrid search."
+            )
+            _VEC_LOAD_WARNED = True
+        _VEC_LOAD_ATTEMPTED = True
+        VEC_AVAILABLE = False
+        return
+
+    try:
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+    except (AttributeError, sqlite3.OperationalError, sqlite3.NotSupportedError) as exc:
+        if not _VEC_LOAD_WARNED:
+            _log.warning(
+                "Could not load sqlite-vec extension (%s: %s). "
+                "Python's bundled sqlite3 may be built without "
+                "SQLITE_ENABLE_LOAD_EXTENSION (common on some Windows "
+                "builds). Vector retrieval disabled; FTS5-only fallback "
+                "in effect.",
+                type(exc).__name__,
+                exc,
+            )
+            _VEC_LOAD_WARNED = True
+        _VEC_LOAD_ATTEMPTED = True
+        VEC_AVAILABLE = False
+        return
+
+    _VEC_LOAD_ATTEMPTED = True
+    VEC_AVAILABLE = True
 
 
 def _db_path(project_path: Path) -> Path:
@@ -63,6 +136,7 @@ def connect(project_path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA synchronous=NORMAL")
+    _try_load_vec(conn)
     return conn
 
 

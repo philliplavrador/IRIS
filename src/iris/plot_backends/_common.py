@@ -4,6 +4,7 @@ These functions are extracted verbatim from the original engine.py "PLOT
 UTILITIES" section so the matplotlib and pyqtgraph backends can both render
 the same parameter panel and time-axis labels.
 """
+
 from __future__ import annotations
 
 from typing import Tuple
@@ -20,32 +21,32 @@ def _show_params_panel(ctx: PipelineContext) -> None:
         return
 
     source_type_names = {
-        'mea_trace': 'Raw MEA trace',
-        'ca_trace':  'Calcium trace (ROI',
-        'rtsort':    'RTSort output',
+        "mea_trace": "Raw MEA trace",
+        "ca_trace": "Calcium trace (ROI",
+        "rtsort": "RTSort output",
     }
     op_names = {
-        'butter_bandpass':    'Butterworth Bandpass Filter',
-        'notch_filter':       'Notch Filter',
-        'sliding_rms':        'Sliding RMS Spike Detection',
-        'constant_rms':       'Constant RMS Spike Detection',
-        'baseline_correction':'Baseline Correction',
-        'sigmoid':            'Sigmoid Transform',
-        'rt_thresh':          'RT Threshold Detection',
-        'rt_detect':          'RT Detection (CNN)',
-        'gcamp_sim':          'GCaMP Simulation',
-        'x_corr':             'Cross-Correlation',
-        'spectrogram':        'Spectrogram',
-        'freq_traces':        'Frequency Power Traces',
-        'spike_pca':          'PCA Waveform Outlier Detection',
-        'spike_curate':       'Spike Train Curation',
+        "butter_bandpass": "Butterworth Bandpass Filter",
+        "notch_filter": "Notch Filter",
+        "sliding_rms": "Sliding RMS Spike Detection",
+        "constant_rms": "Constant RMS Spike Detection",
+        "baseline_correction": "Baseline Correction",
+        "sigmoid": "Sigmoid Transform",
+        "rt_thresh": "RT Threshold Detection",
+        "rt_detect": "RT Detection (CNN)",
+        "gcamp_sim": "GCaMP Simulation",
+        "x_corr": "Cross-Correlation",
+        "spectrogram": "Spectrogram",
+        "freq_traces": "Frequency Power Traces",
+        "spike_pca": "PCA Waveform Outlier Detection",
+        "spike_curate": "Spike Train Curation",
     }
 
     expr = ctx.current_expr
     source_type = expr.source.source_type
     source_id = expr.source.source_id
 
-    if source_type == 'ca_trace':
+    if source_type == "ca_trace":
         source_desc = f"{source_type_names[source_type]}: {source_id})"
     else:
         source_desc = f"{source_type_names.get(source_type, source_type)} (channel_id: {source_id})"
@@ -86,10 +87,22 @@ def _show_params_panel(ctx: PipelineContext) -> None:
     bottom_frac = (panel_h + pad_below) / new_h
     fig.tight_layout(rect=[0, bottom_frac, 1, 1])
 
-    fig.text(0.05, bottom_frac - 0.01, param_text, fontsize=9,
-             verticalalignment="top", family="monospace",
-             bbox=dict(boxstyle="round", facecolor="lightyellow",
-                       alpha=0.9, pad=1.0, edgecolor="gray", linewidth=1))
+    fig.text(
+        0.05,
+        bottom_frac - 0.01,
+        param_text,
+        fontsize=9,
+        verticalalignment="top",
+        family="monospace",
+        bbox=dict(
+            boxstyle="round",
+            facecolor="lightyellow",
+            alpha=0.9,
+            pad=1.0,
+            edgecolor="gray",
+            linewidth=1,
+        ),
+    )
 
 
 def _time_axis_ms(window_samples: Tuple[int, int], fs: float) -> np.ndarray:

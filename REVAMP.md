@@ -783,7 +783,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 ---
 
-### [ ] Task 5.3 — Migrate plot output to artifacts
+### [x] Task 5.3 — Migrate plot output to artifacts
 
 **Phase**: 5 · **Effort**: L · **Blocks**: 5.4
 
@@ -1060,7 +1060,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 9.2 — Daemon /memory/recall
+### [x] Task 9.2 — Daemon /memory/recall
 
 **Phase**: 9 · **Effort**: S · **Blocks**: 9.3
 
@@ -1185,7 +1185,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ## Phase 11 — V2: Vector Search via sqlite-vec
 
-### [ ] Task 11.1 — Add sqlite-vec dependency + db.py loader
+### [x] Task 11.1 — Add sqlite-vec dependency + db.py loader
 
 **Phase**: 11 · **Effort**: S · **Blocks**: 11.2
 

@@ -32,6 +32,8 @@ Endpoints (all mounted under ``/api`` by ``daemon.app``)::
     PATCH /memory/entries/{id}/status     Transition status
     POST /memory/entries/supersede        Supersede one entry with another
     DELETE /memory/entries/{id}           Soft-delete (archive)
+    POST /memory/recall                   Three-stage retrieval (SQL → BM25 → rerank)
+    GET  /memory/should_retrieve          Gate helper: is a query worth recalling?
     POST /memory/extract                  LLM session extraction (lazy import)
     POST /memory/datasets                 Import a dataset (raw version)
     GET  /memory/datasets                 List datasets for the active project
@@ -69,6 +71,7 @@ from iris.projects import memory_entries as _memory_entries
 from iris.projects import messages as _messages
 from iris.projects import operations_store as _operations_store
 from iris.projects import resolve_active_project
+from iris.projects import retrieval as _retrieval
 from iris.projects import runs as _runs
 from iris.projects import sessions as _sessions
 from iris.projects import tool_calls as _tool_calls
@@ -268,6 +271,12 @@ class SupersedeRequest(BaseModel):
 
 class ExtractRequest(BaseModel):
     session_id: str = Field(min_length=1)
+
+
+class RecallRequest(BaseModel):
+    query: str = Field(min_length=1)
+    limit: int = Field(default=10, ge=1, le=100)
+    types: list[str] | None = None
 
 
 class StoreArtifactRequest(BaseModel):
@@ -822,6 +831,47 @@ async def regenerate_markdown() -> dict[str, Any]:
         return {"data": {"ok": True}}
     finally:
         conn.close()
+
+
+# -- retrieval --------------------------------------------------------------
+
+
+@router.post("/memory/recall")
+async def recall_memories(req: RecallRequest) -> dict[str, Any]:
+    """Three-stage retrieval for the active project (spec §8, §11.5).
+
+    Body: ``{query, limit?, types?}``. Returns ranked hits with score
+    breakdown (``bm25_raw``, ``bm25_norm``, ``recency``, ``score``) per
+    :func:`iris.projects.retrieval.recall`.
+    """
+    conn, project_id = _open()
+    try:
+        try:
+            hits = _retrieval.recall(
+                conn,
+                project_id=project_id,
+                query=req.query,
+                limit=req.limit,
+                types=req.types,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except sqlite3.OperationalError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": hits}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/should_retrieve")
+async def should_retrieve(q: str = Query(..., min_length=1)) -> dict[str, Any]:
+    """Pure-function gate wrapper for :func:`retrieval.should_retrieve`.
+
+    No DB round-trip — just the cheap heuristic over the query string so
+    callers (agent-bridge, slice_builder) can skip ``POST /memory/recall``
+    for trivial turns.
+    """
+    return {"data": {"should": _retrieval.should_retrieve(q)}}
 
 
 # -- operations -------------------------------------------------------------

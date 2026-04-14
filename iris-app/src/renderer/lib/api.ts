@@ -410,6 +410,81 @@ export const api = {
   projectExportUrl: (name: string): string =>
     `${BASE}/api/projects/export?name=${encodeURIComponent(name)}`,
 
+  // -- Datasets (REVAMP Phase 6 / Task 6.6) ----------------------------
+  // TODO(Task 6.6): tighten these `any` types once the daemon settles on
+  // final Dataset / DatasetVersion shapes (spec §7 datasets, dataset_versions).
+  importDataset: async (body: {
+    source_path: string
+    name?: string
+    description?: string
+  }): Promise<any> => {
+    const res = await fetch(`${BASE}/api/memory/datasets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) throw new Error(`importDataset failed: ${res.status}`)
+    return res.json()
+  },
+
+  listDatasets: async (): Promise<{ datasets: any[] }> => {
+    const res = await fetch(`${BASE}/api/memory/datasets`)
+    if (!res.ok) return { datasets: [] }
+    const data = await res.json()
+    if (Array.isArray(data)) return { datasets: data }
+    return { datasets: data.datasets ?? data.data ?? [] }
+  },
+
+  getDataset: async (id: string): Promise<any | null> => {
+    const res = await fetch(
+      `${BASE}/api/memory/datasets/${encodeURIComponent(id)}`,
+    )
+    if (!res.ok) return null
+    return res.json()
+  },
+
+  listDatasetVersions: async (id: string): Promise<{ versions: any[] }> => {
+    const res = await fetch(
+      `${BASE}/api/memory/datasets/${encodeURIComponent(id)}/versions`,
+    )
+    if (!res.ok) return { versions: [] }
+    const data = await res.json()
+    if (Array.isArray(data)) return { versions: data }
+    return { versions: data.versions ?? data.data ?? [] }
+  },
+
+  profileDataset: async (
+    id: string,
+    versionId?: string,
+  ): Promise<any> => {
+    const res = await fetch(
+      `${BASE}/api/memory/datasets/${encodeURIComponent(id)}/profile`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(versionId ? { version_id: versionId } : {}),
+      },
+    )
+    if (!res.ok) throw new Error(`profileDataset failed: ${res.status}`)
+    return res.json()
+  },
+
+  deriveDatasetVersion: async (
+    id: string,
+    body: Record<string, any>,
+  ): Promise<any> => {
+    const res = await fetch(
+      `${BASE}/api/memory/datasets/${encodeURIComponent(id)}/derive`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    )
+    if (!res.ok) throw new Error(`deriveDatasetVersion failed: ${res.status}`)
+    return res.json()
+  },
+
   // Runs (Task 7.5)
   listRuns: async (
     _project: string,

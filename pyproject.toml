@@ -45,6 +45,7 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "pandas>=2.3.3",
     "watchdog>=4.0",
+    "sqlite-vec>=0.1.6",
 ]
 
 [project.optional-dependencies]

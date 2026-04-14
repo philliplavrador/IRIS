@@ -306,13 +306,36 @@ class PipelineExecutor:
                     safe = _re.sub(r"[^\w\-]", "_", label)[:80]
                     fig = plt.gcf()
                     plot_path = out / f"{safe}_{_counter[0]}.png"
+                    # Render once to bytes so the file write and the
+                    # content-addressed artifact store agree on the SHA.
                     fig.savefig(str(plot_path), dpi=150, bbox_inches="tight")
                     _counter[0] += 1
+
+                    # Route PNG bytes through iris.projects.artifacts. This
+                    # never raises — store_plot_artifact swallows memory-
+                    # layer failure so the legacy file path remains a
+                    # complete fallback. (REVAMP Task 5.3.)
+                    artifact_id: str | None = None
+                    try:
+                        png_bytes = plot_path.read_bytes()
+                        from iris.plot_sessions import store_plot_artifact
+
+                        fig_title = fig._suptitle.get_text() if fig._suptitle else None
+                        artifact_id = store_plot_artifact(
+                            png_bytes,
+                            self.ctx,
+                            figure_title=fig_title or label,
+                            description=label,
+                        )
+                    except Exception as e:
+                        if self.ctx.verbose:
+                            print(f"  [artifact store skipped: {e}]")
+
                     # Sidecar provenance JSON next to every saved plot
                     try:
                         from iris.plot_sessions import write_provenance_sidecar
 
-                        write_provenance_sidecar(plot_path, self.ctx)
+                        write_provenance_sidecar(plot_path, self.ctx, artifact_id=artifact_id)
                     except Exception as e:
                         if self.ctx.verbose:
                             print(f"  [provenance sidecar skipped: {e}]")

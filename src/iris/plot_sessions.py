@@ -18,6 +18,7 @@ honors whatever root is passed.
 The sidecar JSON files are the audit trail: any plot can be reproduced from
 its sidecar even if the parent session manifest is lost.
 """
+
 from __future__ import annotations
 
 import datetime as _dt
@@ -101,11 +102,18 @@ def write_manifest(
 def write_provenance_sidecar(
     plot_path: Path,
     ctx: PipelineContext,
+    artifact_id: str | None = None,
 ) -> Path | None:
     """Write ``<plot_path>.json`` with the active expression's full provenance.
 
     Returns the sidecar path, or ``None`` if there is no current expression
     (e.g. when called for an overlay plot).
+
+    ``artifact_id`` is an optional content-addressed id (populated when the
+    plot has also been stored via :mod:`iris.projects.artifacts`). It is
+    recorded in the sidecar and manifest as a new field alongside the
+    legacy path so existing frontends keep rendering while new readers can
+    fetch via the artifact store.
     """
     if ctx.current_expr is None:
         return None
@@ -114,6 +122,7 @@ def write_provenance_sidecar(
         "iris_version": IRIS_VERSION,
         "timestamp": _dt.datetime.now().isoformat(timespec="seconds"),
         "plot_file": plot_path.name,
+        "artifact_id": artifact_id,
         "dsl": _expr_to_dsl(ctx.current_expr),
         "window_ms": list(ctx.window_ms),
         "ops": _expand_ops(ctx.current_expr, ctx.ops_cfg),
@@ -124,7 +133,62 @@ def write_provenance_sidecar(
     return sidecar
 
 
+def store_plot_artifact(
+    png_bytes: bytes,
+    ctx: PipelineContext,
+    *,
+    figure_title: str | None = None,
+    description: str | None = None,
+) -> str | None:
+    """Route plot PNG bytes through the content-addressed artifact store.
+
+    Returns the ``artifact_id`` (== SHA-256 of the bytes) on success or
+    ``None`` if no project is active / the memory layer is unavailable.
+    Never raises: the caller's plot rendering must not be blocked by a
+    memory-layer failure. See REVAMP.md Task 5.3.
+    """
+    try:
+        # Imports here so the plot session module stays importable in
+        # minimal environments that don't carry the memory layer.
+        from iris.projects import artifacts as _artifacts
+        from iris.projects import db as _proj_db
+        from iris.projects import resolve_active_project
+
+        project_path = resolve_active_project()
+        if project_path is None:
+            # TODO(Task 5.3): no active project → legacy path only. Once
+            # plot-session roots are always project-scoped this branch
+            # becomes dead code.
+            return None
+
+        conn = _proj_db.connect(project_path)
+        try:
+            _proj_db.init_schema(conn)
+            metadata: dict[str, Any] = {
+                "backend": getattr(ctx, "plot_backend", None),
+                "figure_title": figure_title,
+            }
+            return _artifacts.store(
+                conn,
+                project_path,
+                content=png_bytes,
+                type="plot_png",
+                metadata=metadata,
+                description=description,
+            )
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    except Exception:
+        # Guard absolute: plot pipeline must not crash on memory-layer
+        # trouble. The legacy file path remains a complete fallback.
+        return None
+
+
 # ---------- helpers ----------
+
 
 def _file_fingerprints(paths_cfg: dict[str, str]) -> dict[str, dict[str, Any]]:
     skip = {"output_dir", "cache_dir"}
