@@ -166,6 +166,23 @@ iris run "mea_trace(861).butter_bandpass.spectrogram"
 
 ---
 
+## For contributors / agents
+
+Before committing any change, run the maximalist validation gate:
+
+```bash
+bash scripts/check.sh       # POSIX
+pwsh scripts/check.ps1      # Windows PowerShell
+```
+
+The gate runs `ruff format --check`, `ruff check`, `pyright`, `pytest`,
+`semgrep --config=auto --error`, and `vulture` across `src/iris` + `tests`,
+plus `tsc --noEmit` (and `npm run lint` when present) in `iris-app/`. Any
+non-zero exit blocks the commit. This is the same gate REVAMP.md requires
+for every task.
+
+---
+
 ## Acknowledgements
 
 IRIS is developed in the [Kosik Lab](https://kosik.mcdb.ucsb.edu/) at UC Santa Barbara under the mentorship of Dr. Tjitse van der Molen, with computational guidance from Dr. Daniel Wagenaar's lab at Caltech. Pilot recordings used a Maxwell Biosystems MaxOne high-density MEA at 20 kHz paired with widefield calcium imaging at 50 Hz of mouse cortical primary cultures expressing jGCaMP8m. The RT-Sort spike sorting model used by the `rt_detect` op is from [van der Molen et al. (2024)](https://doi.org/10.1371/journal.pone.0312438).

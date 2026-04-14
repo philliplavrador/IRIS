@@ -220,7 +220,7 @@ Goal: clear every file destined for deletion before any rewrite begins. Build wi
 
 ---
 
-### [ ] Task 0.8 — Dev tooling + maximalist gate script
+### [x] Task 0.8 — Dev tooling + maximalist gate script
 
 **Phase**: 0 · **Effort**: M · **Blocks**: every later task
 
