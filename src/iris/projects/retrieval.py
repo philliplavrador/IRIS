@@ -181,6 +181,8 @@ def recall(
     query: str,
     limit: int = 10,
     types: list[str] | None = None,
+    session_id: str | None = None,
+    query_embedding: list[float] | None = None,
 ) -> list[dict[str, Any]]:
     """Three-stage retrieval: SQL filter → FTS5 BM25 → triple-weighted rerank.
 
@@ -271,6 +273,12 @@ def recall(
         base["score"] = score
         scored.append(base)
 
+    # Optional hybrid fusion: merge vector-candidate ranks via reciprocal
+    # rank fusion (spec §8, REVAMP Task 11.5). Vector candidates not in
+    # the FTS result set are appended with an estimated bm25_norm.
+    if query_embedding is not None:
+        _hybrid_fuse(conn, query_embedding, scored, project_id, types, now=now)
+
     scored.sort(key=lambda d: d["score"], reverse=True)
     top = scored[:limit]
 
@@ -279,4 +287,99 @@ def recall(
     for entry in top:
         memory_entries_mod.touch(conn, entry["memory_id"])
 
+    # Phase 17: log retrieval event so usage tracking can close the loop.
+    if top:
+        _record_retrieval_event(conn, project_id, session_id, query, top)
+
     return top
+
+
+def _hybrid_fuse(
+    conn: sqlite3.Connection,
+    query_embedding: list[float],
+    scored: list[dict[str, Any]],
+    project_id: str,
+    types: list[str] | None,
+    *,
+    now: datetime,
+    k: int = 60,
+    vector_top: int = 25,
+) -> None:
+    """Reciprocal-rank-fuse FTS + vector candidate sets in-place on ``scored``."""
+    import struct as _struct
+
+    try:
+        vec_bytes = _struct.pack(f"<{len(query_embedding)}f", *query_embedding)
+        vec_rows = conn.execute(
+            "SELECT v.rowid, v.distance FROM memory_entries_vec v "
+            "WHERE v.embedding MATCH ? AND k = ? "
+            "ORDER BY v.distance ASC",
+            (vec_bytes, vector_top),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return  # vec0 table absent — V1 mode.
+
+    if not vec_rows:
+        return
+
+    existing = {d["memory_id"]: d for d in scored}
+    # FTS rank bonus via RRF.
+    for rank, entry in enumerate(sorted(scored, key=lambda d: d["score"], reverse=True)):
+        entry["score"] += ALPHA_BM25 * (1.0 / (k + rank + 1))
+
+    for rank, (rowid, _dist) in enumerate(vec_rows):
+        row = conn.execute(
+            "SELECT memory_id, project_id, scope, dataset_id, memory_type, text, "
+            "importance, confidence, status, created_at, last_validated_at, "
+            "last_accessed_at, access_count, evidence_json, tags, superseded_by "
+            "FROM memory_entries WHERE rowid = ?",
+            (rowid,),
+        ).fetchone()
+        if row is None or row[1] != project_id or row[8] != "active":
+            continue
+        if types and row[4] not in set(types):
+            continue
+        rrf_bonus = ALPHA_BM25 * (1.0 / (k + rank + 1))
+        if row[0] in existing:
+            existing[row[0]]["score"] += rrf_bonus
+            continue
+        base = memory_entries_mod._row_to_dict(row)  # noqa: SLF001
+        importance = float(row[6] or 0.0)
+        imp_norm = max(0.0, min(1.0, importance / _IMPORTANCE_MAX))
+        rec = _recency_weight(row[9], now=now)
+        base["bm25_raw"] = 0.0
+        base["bm25_norm"] = 0.0
+        base["recency"] = rec
+        base["score"] = rrf_bonus + BETA_IMPORTANCE * imp_norm + GAMMA_RECENCY * rec
+        scored.append(base)
+        existing[row[0]] = base
+
+
+def _record_retrieval_event(
+    conn: sqlite3.Connection,
+    project_id: str,
+    session_id: str | None,
+    query: str,
+    top: list[dict[str, Any]],
+) -> None:
+    """Insert a retrieval_events row (Phase 17). Silent no-op if table missing."""
+    import json as _json
+    import uuid as _uuid
+
+    try:
+        conn.execute(
+            "INSERT INTO retrieval_events ("
+            "retrieval_event_id, project_id, session_id, query, "
+            "memory_ids_json, was_used_json, created_at, resolved_at) "
+            "VALUES (?, ?, ?, ?, ?, NULL, ?, NULL)",
+            (
+                _uuid.uuid4().hex,
+                project_id,
+                session_id,
+                query,
+                _json.dumps([d["memory_id"] for d in top]),
+                datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            ),
+        )
+    except sqlite3.OperationalError:
+        pass

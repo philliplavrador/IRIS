@@ -387,3 +387,35 @@ def test_record_execution_emits_transform_run_event(
     assert evt["type"] == "transform_run"
     assert "operation_executed" in evt["payload_json"]
     assert op_id in evt["payload_json"]
+
+
+def test_propose_operation_writes_files_and_registers(
+    project_conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    op_id = operations_store.propose_operation(
+        project_conn,
+        project_id="p1",
+        project_path=proj,
+        name="demo_op",
+        version="0.1.0",
+        description="A demo generated op",
+        code="def run(x):\n    return x * 2\n",
+        signature_json={"input": "float", "output": "float"},
+        test_code="def test_ok():\n    assert 1 == 1\n",
+        readme="# demo",
+    )
+    assert op_id
+    # Files on disk
+    op_dir = proj / "ops" / "demo_op" / "v0.1.0"
+    assert (op_dir / "op.py").read_text(encoding="utf-8").startswith("def run")
+    assert (op_dir / "schema.json").is_file()
+    assert (op_dir / "tests" / "test_op.py").is_file()
+    assert (op_dir / "README.md").is_file()
+
+    # Row registered as draft.
+    row = project_conn.execute(
+        "SELECT validation_status FROM operations WHERE op_id = ?", (op_id,)
+    ).fetchone()
+    assert row[0] == "draft"

@@ -1386,3 +1386,224 @@ async def derive_dataset_version(dataset_id: str, req: DeriveVersionRequest) -> 
         return {"data": {"dataset_version_id": dataset_version_id}}
     finally:
         conn.close()
+
+
+# -- V2: continuous extraction / reflection / contradictions / staleness ---
+
+
+class _ExtractTurnRequest(BaseModel):
+    message_id: str
+
+
+@router.post("/memory/extract/turn")
+async def extract_turn(req: _ExtractTurnRequest) -> dict[str, Any]:
+    from iris.projects.extraction import extract_turn as _extract_turn
+
+    conn, _ = _open()
+    try:
+        try:
+            ids = _extract_turn(conn, message_id=req.message_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=str(e)) from e
+        return {"data": {"ids": list(ids)}}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/pending/count")
+async def pending_memory_count() -> dict[str, Any]:
+    conn, project_id = _open()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM memory_entries WHERE project_id = ? AND status = 'draft'",
+            (project_id,),
+        ).fetchone()
+        return {"data": {"count": int(row[0] or 0)}}
+    finally:
+        conn.close()
+
+
+class _ReflectRequest(BaseModel):
+    threshold: float | None = None
+
+
+@router.post("/memory/reflect")
+async def trigger_reflect(req: _ReflectRequest) -> dict[str, Any]:
+    from iris.projects import reflection as _refl
+
+    conn, project_id = _open()
+    try:
+        threshold = req.threshold or _refl.DEFAULT_IMPORTANCE_THRESHOLD
+        try:
+            ids = _refl.run_reflection(conn, project_id=project_id, threshold=threshold)
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=str(e)) from e
+        return {"data": {"ids": list(ids)}}
+    finally:
+        conn.close()
+
+
+class _ProposeOpRequest(BaseModel):
+    name: str
+    version: str
+    description: str
+    code: str
+    signature_json: dict[str, Any] | None = None
+    test_code: str | None = None
+    readme: str | None = None
+
+
+@router.post("/memory/operations/propose")
+async def propose_op(req: _ProposeOpRequest) -> dict[str, Any]:
+    from iris.projects import operations_store
+
+    conn, project_id = _open()
+    project_path = _active_project()
+    try:
+        op_id = operations_store.propose_operation(
+            conn,
+            project_id=project_id,
+            project_path=project_path,
+            name=req.name,
+            version=req.version,
+            description=req.description,
+            code=req.code,
+            signature_json=req.signature_json,
+            test_code=req.test_code,
+            readme=req.readme,
+        )
+        return {"data": {"op_id": op_id}}
+    finally:
+        conn.close()
+
+
+class _ValidateOpRequest(BaseModel):
+    sample_input: Any | None = None
+    entry_point: str = "run"
+    source_code: str | None = None
+    test_code: str | None = None
+
+
+@router.post("/memory/operations/{op_id}/validate")
+async def validate_op(op_id: str, req: _ValidateOpRequest) -> dict[str, Any]:
+    from iris.projects import op_validation
+
+    conn, _ = _open()
+    try:
+        result = op_validation.validate_operation(
+            conn,
+            op_id,
+            sample_input=req.sample_input,
+            entry_point=req.entry_point,
+            source_code=req.source_code,
+            test_code=req.test_code,
+        )
+        return {"data": result.__dict__ if hasattr(result, "__dict__") else result}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/contradictions")
+async def list_contradictions_route(resolved: bool | None = None) -> dict[str, Any]:
+    from iris.projects import contradictions as _ctr
+
+    conn, project_id = _open()
+    try:
+        rows = _ctr.list_contradictions(conn, project_id=project_id, resolved=resolved)
+        return {"data": rows}
+    finally:
+        conn.close()
+
+
+class _ResolveContradictionRequest(BaseModel):
+    resolution_text: str
+    winning_memory_id: str
+
+
+@router.post("/memory/contradictions/{contradiction_id}/resolve")
+async def resolve_contradiction_route(
+    contradiction_id: str, req: _ResolveContradictionRequest
+) -> dict[str, Any]:
+    from iris.projects import contradictions as _ctr
+
+    conn, _ = _open()
+    try:
+        try:
+            _ctr.resolve(
+                conn,
+                contradiction_id,
+                resolution_text=req.resolution_text,
+                winning_memory_id=req.winning_memory_id,
+            )
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": {"ok": True}}
+    finally:
+        conn.close()
+
+
+@router.post("/memory/staleness/scan")
+async def staleness_scan_route() -> dict[str, Any]:
+    from iris.projects import staleness as _stale
+
+    conn, project_id = _open()
+    try:
+        ids = _stale.scan(conn, project_id)
+        return {"data": {"ids": ids}}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/metrics")
+async def memory_metrics() -> dict[str, Any]:
+    """Retrieval-to-usage ratio, stale-hit rate, contradiction rate (Task 17.2)."""
+    import json as _json
+
+    conn, project_id = _open()
+    try:
+        try:
+            events_rows = conn.execute(
+                "SELECT memory_ids_json, was_used_json FROM retrieval_events WHERE project_id = ?",
+                (project_id,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            events_rows = []
+        total_retrieved = 0
+        total_used = 0
+        for ids_json, used_json in events_rows:
+            try:
+                ids = _json.loads(ids_json or "[]")
+                used = _json.loads(used_json or "[]")
+            except (TypeError, ValueError):
+                continue
+            total_retrieved += len(ids)
+            total_used += len(used)
+        usage_ratio = (total_used / total_retrieved) if total_retrieved else 0.0
+
+        stale_row = conn.execute(
+            "SELECT "
+            "SUM(CASE WHEN status = 'stale' THEN 1 ELSE 0 END), "
+            "SUM(CASE WHEN status = 'contradicted' THEN 1 ELSE 0 END), "
+            "COUNT(*) "
+            "FROM memory_entries WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()
+        stale_count = int(stale_row[0] or 0)
+        contradicted_count = int(stale_row[1] or 0)
+        total = int(stale_row[2] or 0)
+        return {
+            "data": {
+                "retrievals": len(events_rows),
+                "retrieved_total": total_retrieved,
+                "used_total": total_used,
+                "usage_ratio": usage_ratio,
+                "stale_rate": (stale_count / total) if total else 0.0,
+                "contradiction_rate": (contradicted_count / total) if total else 0.0,
+            }
+        }
+    finally:
+        conn.close()

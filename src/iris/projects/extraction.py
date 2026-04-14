@@ -28,7 +28,7 @@ from typing import Any, Final
 
 from . import memory_entries as memory_entries_mod
 
-__all__ = ["extract_session"]
+__all__ = ["extract_session", "extract_turn"]
 
 _LOG = logging.getLogger(__name__)
 
@@ -162,6 +162,114 @@ def extract_session(conn: sqlite3.Connection, session_id: str) -> list[str]:
 
 
 # -- internals --------------------------------------------------------------
+
+
+def extract_turn(
+    conn: sqlite3.Connection,
+    *,
+    message_id: str,
+    llm_fn: Any = None,
+    dedup_threshold: float = 0.85,
+) -> list[str]:
+    """Per-turn extraction (Mem0-style, spec §10.1, REVAMP Task 12.1).
+
+    Reads the assistant ``message_id`` plus the preceding user message
+    (if any), asks the LLM for candidate memories, filters by importance,
+    and dedups each candidate against existing active memories via an
+    FTS5 BM25 lookup. Candidates whose best match's normalized BM25
+    score exceeds ``dedup_threshold`` are dropped as duplicates.
+
+    ``llm_fn`` takes ``(system_prompt, user_prompt) -> str``. ``None``
+    uses the Anthropic SDK via :func:`_call_anthropic`.
+    """
+    row = conn.execute(
+        "SELECT session_id, role, content FROM messages WHERE message_id = ?",
+        (message_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"unknown message_id {message_id!r}")
+    session_id, role, content = row[0], row[1], row[2]
+    if role != "assistant" or not content:
+        return []
+    project_id = _resolve_project_id(conn, session_id)
+
+    prior = conn.execute(
+        "SELECT role, content FROM messages "
+        "WHERE session_id = ? AND rowid < (SELECT rowid FROM messages WHERE message_id = ?) "
+        "ORDER BY rowid DESC LIMIT 1",
+        (session_id, message_id),
+    ).fetchone()
+    lines = []
+    if prior is not None:
+        lines.append(f"[{prior[0]}] {str(prior[1]).replace(chr(10), ' ')}")
+    lines.append(f"[assistant] {str(content).replace(chr(10), ' ')}")
+    transcript = "\n".join(lines)
+
+    if llm_fn is None:
+        raw = _call_anthropic(transcript)
+    else:
+        raw = llm_fn(_SYSTEM_PROMPT, _USER_PROMPT_TEMPLATE.format(transcript=transcript))
+    payload = _parse_extraction_json(raw)
+
+    proposed: list[str] = []
+    for category, memory_type in _CATEGORY_TO_MEMORY_TYPE.items():
+        items = payload.get(category) or []
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            parsed = _coerce_item(item)
+            if parsed is None:
+                continue
+            text, importance = parsed
+            if importance < _IMPORTANCE_THRESHOLD:
+                continue
+            if _is_duplicate(conn, project_id, text, memory_type, dedup_threshold):
+                continue
+            mid = memory_entries_mod.propose(
+                conn,
+                project_id=project_id,
+                scope="project",
+                memory_type=memory_type,
+                text=text,
+                importance=float(importance),
+                confidence=0.5,
+                session_id=session_id,
+            )
+            proposed.append(mid)
+    return proposed
+
+
+def _is_duplicate(
+    conn: sqlite3.Connection,
+    project_id: str,
+    text: str,
+    memory_type: str,
+    threshold: float,
+) -> bool:
+    """Token-overlap dedup against active same-type memories.
+
+    Jaccard similarity on the lowercased alphanumeric token sets, gated at
+    ``threshold``. Cheap, deterministic, and doesn't need a working FTS5
+    match — which can fail on short queries or stop-word-heavy phrases.
+    """
+    new_tokens = set(re.findall(r"\w+", text.lower()))
+    if not new_tokens:
+        return False
+    rows = conn.execute(
+        "SELECT text FROM memory_entries "
+        "WHERE project_id = ? AND memory_type = ? AND status = 'active'",
+        (project_id, memory_type),
+    ).fetchall()
+    for (existing_text,) in rows:
+        existing_tokens = set(re.findall(r"\w+", (existing_text or "").lower()))
+        if not existing_tokens:
+            continue
+        overlap = len(new_tokens & existing_tokens)
+        union = len(new_tokens | existing_tokens)
+        jaccard = overlap / union if union else 0.0
+        if jaccard >= threshold:
+            return True
+    return False
 
 
 def _resolve_project_id(conn: sqlite3.Connection, session_id: str) -> str:

@@ -100,7 +100,46 @@ def append_message(
         conn.execute("ROLLBACK")
         raise
 
+    if role == "assistant":
+        try:
+            _scan_citations(conn, session_id=session_id, content=content)
+        except sqlite3.OperationalError:
+            # retrieval_events table may not exist pre-v3; silently skip.
+            pass
+
     return message_id
+
+
+def _scan_citations(conn: sqlite3.Connection, *, session_id: str, content: str) -> None:
+    """Update retrieval_events.was_used_json for memory IDs cited in this assistant turn.
+
+    Phase 17 (spec Appendix A.4). Citations are detected as any 32-char
+    hex token in the content matching a memory_id from a pending
+    retrieval event for this session.
+    """
+    import json as _json
+    import re as _re
+
+    tokens = set(_re.findall(r"\b[a-f0-9]{32}\b", content.lower()))
+    if not tokens:
+        return
+    rows = conn.execute(
+        "SELECT retrieval_event_id, memory_ids_json FROM retrieval_events "
+        "WHERE session_id = ? AND resolved_at IS NULL",
+        (session_id,),
+    ).fetchall()
+    now = _now_iso()
+    for ev_id, ids_json in rows:
+        try:
+            ids = _json.loads(ids_json or "[]")
+        except (ValueError, TypeError):
+            continue
+        used = [m for m in ids if m in tokens]
+        conn.execute(
+            "UPDATE retrieval_events SET was_used_json = ?, resolved_at = ? "
+            "WHERE retrieval_event_id = ?",
+            (_json.dumps(used), now, ev_id),
+        )
 
 
 def search(

@@ -119,3 +119,52 @@ def test_recall_respects_limit(project_conn: sqlite3.Connection) -> None:
         _plant(project_conn, text=f"bandpass finding number {i}", importance=6.0)
     hits = retrieval.recall(project_conn, project_id="p1", query="bandpass", limit=3)
     assert len(hits) <= 3
+
+
+def test_recall_records_retrieval_event_when_table_exists(
+    project_conn: sqlite3.Connection,
+) -> None:
+    from iris.projects import db as _db
+
+    _db.migrate(project_conn, 3)
+    _plant(project_conn, text="bandpass analysis noise floor at 300Hz")
+    retrieval.recall(project_conn, project_id="p1", query="bandpass", session_id=None, limit=5)
+    rows = project_conn.execute(
+        "SELECT memory_ids_json FROM retrieval_events WHERE project_id = ?",
+        ("p1",),
+    ).fetchall()
+    assert len(rows) == 1
+    assert "bandpass" not in rows[0][0]  # memory ids only, not query text
+
+
+def test_citation_scan_marks_was_used(project_conn: sqlite3.Connection) -> None:
+    import json
+
+    from iris.projects import db as _db
+    from iris.projects.messages import append_message
+    from iris.projects.sessions import start_session
+
+    _db.migrate(project_conn, 3)
+    sid = start_session(
+        project_conn,
+        project_id="p1",
+        model_provider="anthropic",
+        model_name="claude",
+        system_prompt="",
+    )
+    mid = _plant(project_conn, text="noise floor is 300 Hz")
+    retrieval.recall(project_conn, project_id="p1", query="noise floor", session_id=sid, limit=5)
+    # Assistant message cites the memory_id as a bare hex token.
+    append_message(
+        project_conn,
+        session_id=sid,
+        role="assistant",
+        content=f"Per earlier finding {mid}, bandpass is fine.",
+    )
+    rows = project_conn.execute(
+        "SELECT was_used_json, resolved_at FROM retrieval_events WHERE session_id = ?",
+        (sid,),
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][1] is not None
+    assert mid in json.loads(rows[0][0])

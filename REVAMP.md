@@ -1239,7 +1239,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 11.5 — Hybrid retrieval + Phase 11 E2E
+### [x] Task 11.5 — Hybrid retrieval + Phase 11 E2E
 
 **Phase**: 11 · **Effort**: L · **Blocks**: Phase 12
 
@@ -1260,7 +1260,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ## Phase 12 — V2: Continuous Extraction
 
-### [ ] Task 12.1 — Per-turn extraction with dedup
+### [x] Task 12.1 — Per-turn extraction with dedup
 
 **Phase**: 12 · **Effort**: L · **Blocks**: 12.2
 
@@ -1273,7 +1273,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 12.2 — Daemon /memory/extract per-turn + agent-bridge wiring
+### [x] Task 12.2 — Daemon /memory/extract per-turn + agent-bridge wiring
 
 **Phase**: 12 · **Effort**: M · **Blocks**: 12.3
 
@@ -1285,7 +1285,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 12.3 — Tests for continuous extraction
+### [x] Task 12.3 — Tests for continuous extraction
 
 **Files to modify**:
 - `tests/test_extraction.py` — add per-turn cases with dedup verification.
@@ -1325,7 +1325,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 13.2 — Daemon /memory/reflect
+### [x] Task 13.2 — Daemon /memory/reflect
 
 **Phase**: 13 · **Effort**: S · **Blocks**: 13.3
 
@@ -1336,7 +1336,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 13.3 — Tests + Phase 13 E2E
+### [x] Task 13.3 — Tests + Phase 13 E2E
 
 **Phase**: 13 · **Effort**: M · **Blocks**: Phase 14
 
@@ -1367,7 +1367,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 14.2 — Retrieval integration
+### [x] Task 14.2 — Retrieval integration
 
 **Files to modify**:
 - `src/iris/projects/retrieval.py` — session summaries retrievable as a memory_type.
@@ -1376,7 +1376,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 14.3 — Tests + Phase 14 E2E
+### [x] Task 14.3 — Tests + Phase 14 E2E
 
 **Files to create**:
 - `tests/test_summarization.py`.
@@ -1400,7 +1400,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 15.2 — Generated-op pipeline
+### [x] Task 15.2 — Generated-op pipeline
 
 **Phase**: 15 · **Effort**: L · **Blocks**: 15.3
 
@@ -1411,7 +1411,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 15.3 — Daemon endpoints
+### [x] Task 15.3 — Daemon endpoints
 
 **Files to modify**:
 - `src/iris/daemon/routes/operations.py` — `POST /operations/propose`, `POST /operations/<id>/validate`.
@@ -1420,7 +1420,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 15.4 — Tests + Phase 15 E2E
+### [x] Task 15.4 — Tests + Phase 15 E2E
 
 **Files to create**:
 - `tests/test_op_validation.py`.
@@ -1457,7 +1457,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 16.3 — Daemon + tests
+### [x] Task 16.3 — Daemon + tests
 
 **Files to modify**:
 - `src/iris/daemon/routes/memory.py` — `GET /memory/contradictions`, `POST /memory/contradictions/<id>/resolve`, `POST /memory/staleness/scan`.
@@ -1471,7 +1471,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ## Phase 17 — V2: Retrieval Metrics + V2 Wrap
 
-### [ ] Task 17.1 — Track retrieval-to-usage
+### [x] Task 17.1 — Track retrieval-to-usage
 
 **Files to modify**:
 - `src/iris/projects/retrieval.py` — when a slice is built, record retrieved memory IDs in a new `retrieval_events` table.
@@ -1484,7 +1484,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 17.2 — Daemon /memory/metrics
+### [x] Task 17.2 — Daemon /memory/metrics
 
 **Files to modify**:
 - `src/iris/daemon/routes/memory.py` — `GET /memory/metrics?project=` returns retrieval-to-usage ratio, stale-hit rate, contradiction rate.
@@ -1493,7 +1493,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 17.3 — V2 acceptance gate
+### [x] Task 17.3 — V2 acceptance gate
 
 **Validation additions**: full V2 E2E covering: hybrid retrieval, continuous extraction, reflection cycle, contradiction injection, staleness scan, metrics endpoint.
 
@@ -1780,7 +1780,7 @@ This phase is gated by MATLAB + Kilosort2 availability. Tasks must runtime-check
 
 ## Phase 24 — Final Cleanup + Docs Refresh
 
-### [ ] Task 24.1 — Whole-repo gate
+### [x] Task 24.1 — Whole-repo gate
 
 Run maximalist gate across the entire repo. Fix every finding.
 

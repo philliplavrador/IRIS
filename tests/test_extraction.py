@@ -210,6 +210,72 @@ def test_extract_session_raises_runtime_error_on_bad_json(
         extraction_mod.extract_session(project_conn, sid)
 
 
+def test_extract_turn_returns_candidates_for_assistant_message(
+    project_conn: sqlite3.Connection,
+) -> None:
+    sid = _seed_transcript(project_conn)
+    assistant_id = project_conn.execute(
+        "SELECT message_id FROM messages WHERE session_id = ? AND role = 'assistant'",
+        (sid,),
+    ).fetchone()[0]
+    canned = json.dumps(
+        {"findings": [{"text": "bandpass produced a clean noise floor at 300Hz", "importance": 7}]}
+    )
+    ids = extraction_mod.extract_turn(
+        project_conn,
+        message_id=assistant_id,
+        llm_fn=lambda _s, _u: canned,
+    )
+    assert len(ids) == 1
+
+
+def test_extract_turn_dedups_against_existing_memory(
+    project_conn: sqlite3.Connection,
+) -> None:
+    from iris.projects import memory_entries as me
+
+    sid = _seed_transcript(project_conn)
+    # Plant an existing active memory with very similar text.
+    mid = me.propose(
+        project_conn,
+        project_id="p1",
+        scope="project",
+        memory_type="finding",
+        text="bandpass produced clean noise floor at 300 Hz",
+        importance=7.0,
+    )
+    me.commit_pending(project_conn, [mid])
+
+    assistant_id = project_conn.execute(
+        "SELECT message_id FROM messages WHERE session_id = ? AND role = 'assistant'",
+        (sid,),
+    ).fetchone()[0]
+    canned = json.dumps(
+        {"findings": [{"text": "bandpass produced clean noise floor at 300 Hz", "importance": 7}]}
+    )
+    ids = extraction_mod.extract_turn(
+        project_conn,
+        message_id=assistant_id,
+        llm_fn=lambda _s, _u: canned,
+        dedup_threshold=0.5,
+    )
+    assert ids == []
+
+
+def test_extract_turn_ignores_non_assistant(project_conn: sqlite3.Connection) -> None:
+    sid = _seed_transcript(project_conn)
+    user_id = project_conn.execute(
+        "SELECT message_id FROM messages WHERE session_id = ? AND role = 'user'",
+        (sid,),
+    ).fetchone()[0]
+    ids = extraction_mod.extract_turn(
+        project_conn,
+        message_id=user_id,
+        llm_fn=lambda _s, _u: "{}",
+    )
+    assert ids == []
+
+
 def test_extract_session_requires_api_key(
     project_conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
 ) -> None:

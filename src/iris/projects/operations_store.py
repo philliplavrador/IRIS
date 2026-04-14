@@ -47,6 +47,7 @@ import json
 import sqlite3
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from iris.projects import events
@@ -485,10 +486,50 @@ def search(
 # -- V2 stubs ---------------------------------------------------------------
 
 
-def propose_operation(*args: Any, **kwargs: Any) -> str:
-    """Propose a generated op for validation. V2 — Phase 15."""
-    # TODO(Phase 15): LLM-generated code + static checks + sandbox run.
-    raise NotImplementedError("Phase 15")
+def propose_operation(
+    conn: sqlite3.Connection,
+    *,
+    project_id: str,
+    project_path: Path,
+    name: str,
+    version: str,
+    description: str,
+    code: str,
+    signature_json: dict[str, Any] | None = None,
+    test_code: str | None = None,
+    readme: str | None = None,
+) -> str:
+    """Propose a generated op (Phase 15, REVAMP Task 15.2).
+
+    Writes the op source + optional tests + README into
+    ``<project_path>/ops/<name>/v<version>/`` and registers the op via
+    :func:`register` with ``kind='generated'`` (lands as ``status='draft'``).
+    A subsequent :func:`iris.projects.op_validation.validate_operation`
+    call promotes it to ``validated`` or ``rejected``.
+    """
+    op_dir = project_path / "ops" / name / f"v{version}"
+    op_dir.mkdir(parents=True, exist_ok=True)
+    (op_dir / "op.py").write_text(code, encoding="utf-8")
+    (op_dir / "schema.json").write_text(
+        json.dumps(signature_json or {}, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    if test_code is not None:
+        tests_dir = op_dir / "tests"
+        tests_dir.mkdir(exist_ok=True)
+        (tests_dir / "test_op.py").write_text(test_code, encoding="utf-8")
+    if readme is not None:
+        (op_dir / "README.md").write_text(readme, encoding="utf-8")
+
+    return register(
+        conn,
+        project_id=project_id,
+        name=name,
+        version=version,
+        kind="generated",
+        signature_json=signature_json or {},
+        docstring=description,
+        source_code=code,
+    )
 
 
 def validate_operation(*args: Any, **kwargs: Any) -> dict[str, Any]:
