@@ -1,578 +1,343 @@
-# MEA Electrophysiology Pipeline — Project Overview
+# IRIS Architecture
 
-## 1. Introduction
+IRIS is a local AI-powered data-analysis workspace. A user runs a React
+webapp in the browser, chats with Claude (via the Claude Code Agent SDK),
+and the model drives a Python analysis daemon that reads and writes a
+per-project SQLite database, a content-addressed artifact store, and a
+set of regenerated Markdown files.
 
-### What This Is
+This document is the architectural overview. For deeper detail:
 
-This project is a config-driven pipeline for processing extracellular electrophysiology recordings from Maxwell microelectrode arrays (MEAs), alongside GCaMP calcium imaging data. Instead of writing ad-hoc analysis scripts, the user defines processing chains as short strings — a domain-specific language (DSL) — and the engine handles execution, caching, type checking, and plotting automatically.
-
-A typical pipeline string looks like this:
-
-```
-mea_trace(861).saturation_mask.notch_filter.butter_bandpass.rt_detect.sigmoid
-```
-
-This loads channel 861 from the MEA recording, masks saturated regions, removes power-line noise, bandpass-filters to the spike band, runs a CNN spike detector, and converts logits to probabilities — all from a single line of config.
-
-### Why It Exists
-
-MEA recordings generate large, multi-channel voltage traces (20 kHz sampling across hundreds of electrodes). Processing these recordings involves many sequential steps — filtering, artifact removal, spike detection, calcium trace alignment — each with tunable parameters. The goals of this pipeline are:
-
-- **Reproducibility**: every parameter is stored in a config dict; re-running the same config produces the same result.
-- **Composability**: operations are independent building blocks that chain together via the DSL. Swapping the order or adding a step is a one-line edit.
-- **Speed**: a two-tier cache (in-memory + disk) means re-runs skip already-computed steps. Changing a parameter only recomputes from that point forward.
-- **Visualization**: every operation auto-generates a plot of its output, with operation parameters embedded in the figure margin for traceability.
-
-### Project Structure
-
-| File | Purpose |
-|------|---------|
-| `engine.py` | All domain logic: data types, DSL parser, pipeline executor, cache, operation handlers, source loaders, plot handlers, registry factory. ~2400 lines. |
-| `pipeline.ipynb` | Config and run only. Defines file paths, operation parameters, and DSL pipeline strings. No domain logic. Local use (Windows). |
-| `colab_pipeline.ipynb` | Google Colab version of `pipeline.ipynb`. Same config, different paths and matplotlib backend. |
-| `ops.md` | Mathematical reference for every operation, with LaTeX formulas and source links into `engine.py`. |
-| `requirements.txt` | Python dependencies. |
-
-All domain logic lives in `engine.py`. The notebooks contain zero signal processing code — they are purely configuration.
+- Memory system design → [`../IRIS Memory Restructure.md`](../IRIS%20Memory%20Restructure.md) (spec)
+- Build-order task ledger → [`../REVAMP.md`](../REVAMP.md)
+- Operation math → [`operations.md`](operations.md)
+- Project workspace contract → [`projects.md`](projects.md)
 
 ---
 
-## 2. Architecture
+## System shape
 
-### High-Level Flow
-
-```
-User writes config dicts     User writes DSL strings        One cell runs everything
-   (ops_cfg, paths_cfg)    →   (pipeline_cfg list)       →   run_pipeline() → plots
-```
-
-The pipeline takes three inputs:
-1. **`paths_cfg`** — where the data files are
-2. **`ops_cfg`** — parameters for each operation (filter cutoffs, thresholds, etc.)
-3. **`pipeline_cfg`** — list of DSL strings describing what to compute
-
-And produces: auto-generated plots for every result, plus in-memory result objects for further analysis.
-
-### Under the Hood
+Three long-lived processes, three ports:
 
 ```
-DSL strings
-    ↓
-DSLParser  →  Abstract Syntax Tree (source nodes + operation nodes)
-    ↓
-PipelineExecutor  →  For each expression:
-    ├── Check cache (longest prefix match)
-    ├── Load source data (with margin padding for filters)
-    ├── Apply operations in sequence (type-checked)
-    ├── Cache intermediate results
-    └── Auto-plot the final result
++---------------------------+   HTTP proxy   +----------------------------+
+| React renderer (Vite)     | -------------> | Express webapp (:4001)     |
+|   browser @ :4173         |    WebSocket   |   server/index.ts          |
+|   src/renderer/           | <------------> |   server/agent-bridge.ts   |
++---------------------------+                +---------------------------+
+                                                      |
+                                      Claude Code SDK |  HTTP (localhost)
+                                                      v
+                                             +-----------------------------+
+                                             | Python daemon (:4002)       |
+                                             |   FastAPI                   |
+                                             |   src/iris/daemon/          |
+                                             +-----------------------------+
+                                                      |
+                                                      v
+                                             +-----------------------------+
+                                             | Project workspace on disk   |
+                                             |   projects/<name>/          |
+                                             |     iris.sqlite             |
+                                             |     memory/*.md             |
+                                             |     datasets/ artifacts/    |
+                                             |     ops/ indexes/           |
+                                             +-----------------------------+
 ```
 
-**Key components:**
+- **Renderer (`:4173`)** — Vite dev server serves the React 19 SPA
+  (`iris-app/src/renderer/`). Talks only to the webapp.
+- **Webapp (`:4001`)** — Express + WebSocket. Hosts the agent bridge
+  that spawns the Claude Code SDK session, forwards tool calls, and
+  proxies REST requests to the daemon. See [`iris-app/server/CLAUDE.md`](../iris-app/server/CLAUDE.md).
+- **Daemon (`:4002`)** — FastAPI, owns all disk state: the project
+  SQLite files, artifacts, and Markdown renders. The webapp never
+  touches disk directly; every mutation goes through a daemon route.
 
-- **DSLParser** — converts strings like `"mea_trace(861).notch_filter"` into an AST of source nodes and operation nodes. Handles parenthesized arguments, nested expressions (for cross-correlation), overlay groups, and window directives.
-
-- **OpRegistry** — central registry mapping operation names to their handler functions, margin calculators, and plot handlers. The `TYPE_TRANSITIONS` table defines which input types each operation accepts and what it produces.
-
-- **PipelineExecutor** — walks the AST, dispatching each operation through the registry. Handles bank vectorization (applying single-channel ops across all channels of an MEABank automatically), function-ops with inner expressions (like `x_corr`), and margin management.
-
-- **PipelineCache** — two-tier caching system:
-  - *Memory cache*: reuses previously computed prefixes within a single run. If the pipeline includes both `mea_trace(861).notch_filter` and `mea_trace(861).notch_filter.butter_bandpass`, the notch-filtered result is computed once.
-  - *Disk cache*: persists results as pickle files across runs. Cache keys include the analysis window, all operation parameters, file paths, and file modification times — so the cache automatically invalidates when source data or parameters change.
-
-- **Margin system** — IIR filters (bandpass, notch) produce transient artifacts at signal edges. The margin system solves this by loading extra samples on each side of the requested window, running the filter on the extended data, then trimming the margins. Each filter declares how many margin samples it needs (based on filter order and cutoff frequency).
-
-### Type System
-
-Every operation declares its input → output type mapping. The executor validates these at each step:
-
-| Type | Represents |
-|------|------------|
-| `MEATrace` | Single-channel voltage trace (data, sample rate, channel ID, window, margins) |
-| `MEABank` | Multi-channel voltage traces (all channels at once) |
-| `CATrace` | Calcium imaging trace (single ROI, interpolated to MEA sample rate) |
-| `RTTrace` | RTSort CNN output (single-channel logits or probabilities) |
-| `RTBank` | Multi-channel RTSort outputs |
-| `SpikeTrain` | Detected spike times + threshold curve + source signal |
-| `SimCalcium` | Simulated GCaMP fluorescence from a spike train |
-| `SimCalciumBank` | Simulated fluorescence for all channels |
-| `CorrelationResult` | Cross-correlation scores + best-matching electrode |
-| `Spectrogram` | Time-frequency power spectral density |
-| `FreqPowerTraces` | Power vs time at specific frequencies |
-
-### Type Transitions
-
-Each operation declares which input types it accepts and what it produces:
-
-| Operation | Input → Output |
-|-----------|---------------|
-| `butter_bandpass` | MEATrace → MEATrace, MEABank → MEABank |
-| `notch_filter` | MEATrace → MEATrace, MEABank → MEABank |
-| `saturation_mask` | MEATrace → MEATrace, MEABank → MEABank |
-| `amp_gain_correction` | MEATrace → MEATrace, MEABank → MEABank |
-| `constant_rms` | MEATrace → SpikeTrain |
-| `sliding_rms` | MEATrace → SpikeTrain |
-| `baseline_correction` | CATrace → CATrace |
-| `rt_detect` | MEATrace → RTTrace |
-| `sigmoid` | RTTrace → RTTrace, RTBank → RTBank |
-| `rt_thresh` | RTTrace → SpikeTrain |
-| `gcamp_sim` | SpikeTrain → SimCalcium |
-| `x_corr` | CATrace × SimCalciumBank → CorrelationResult |
-| `spectrogram` | MEATrace → Spectrogram |
-| `freq_traces` | MEATrace → FreqPowerTraces |
-
-If you chain an operation onto an incompatible type (e.g., `ca_trace(11).rt_detect`), the executor raises a clear type error before any computation.
-
-### Bank Vectorization
-
-When an operation is registered for both `MEATrace → MEATrace` and `MEABank → MEABank`, the executor automatically handles the bank case by applying the single-channel handler to each channel with a progress bar. Operation code only needs to be written once for the single-channel case.
+The CLI (`iris …`) and the webapp share the same daemon and the same
+project workspace, so a CLI run is visible to a chat session and vice
+versa.
 
 ---
 
-## 3. The DSL
+## Three storage substrates
 
-### Basics
-
-A pipeline string is a dot-separated chain starting with a data source:
-
-```
-mea_trace(861).notch_filter.butter_bandpass
-```
-
-- **Source**: `mea_trace(861)` loads channel 861 from the MEA recording
-- **Operations**: each dot-separated name applies an operation to the previous result
-- **Left to right**: data flows through the chain sequentially
-
-### Sources
-
-| Source | Description |
-|--------|-------------|
-| `mea_trace(N)` | Load MEA channel N (e.g., 861). Returns `MEATrace`. |
-| `mea_trace(all)` | Load all MEA channels. Returns `MEABank`. |
-| `ca_trace(N)` | Load calcium trace N. Returns `CATrace`. |
-| `rtsort(N)` | Load precomputed RTSort output for channel N. Returns `RTTrace`. |
-
-### Windows
-
-The first item in a pipeline section sets the time window:
-
-```python
-pipe = [
-    "window_ms[14487.05, 44352.95]",   # analyze this time range
-    "mea_trace(861).notch_filter",       # this runs within that window
-]
-```
-
-Use `"window_ms[full]"` for the entire recording.
-
-### Overlays
-
-Wrap multiple expressions in a list to overlay them on one plot:
-
-```python
-["mea_trace(861)", "mea_trace(861).butter_bandpass"]
-```
-
-This plots raw and filtered signals together, normalized to [0, 1] for visual comparison.
-
-### Parameter Overrides
-
-Operation parameters come from `ops_cfg` by default, but can be overridden inline:
+Per spec §5.1, every project has three canonical stores that sit side
+by side under `projects/<name>/`:
 
 ```
-mea_trace(861).butter_bandpass(low_hz=500, high_hz=3000)
+projects/<name>/
+|-- iris.sqlite             <-- Substrate 1: programmatic truth
+|-- memory/
+|   |-- PROJECT.md          <-- Substrate 3: regenerated human view
+|   |-- DECISIONS.md
+|   |-- OPEN_QUESTIONS.md
+|   `-- DATASETS/<id>.md
+|-- datasets/
+|   |-- raw/<id>/<sha>.<ext>         <-- Substrate 2: content-addressed
+|   `-- derived/<id>/<sha>.<ext>
+|-- artifacts/<sha>/...              <-- Substrate 2: content-addressed
+|-- ops/<op>/v<semver>/...
+|-- indexes/embeddings.<fmt>         <-- V2+ vector index
+`-- config.toml
 ```
 
-### Function-Ops
+| # | Substrate | Role | Write path |
+|---|-----------|------|------------|
+| 1 | SQLite `iris.sqlite` | Source of structured truth: projects, sessions, events, messages, tool_calls, memory_entries, datasets, artifacts, runs, operations. WAL mode, FTS5 on messages + memory entries. | Every daemon route; every SDK tool handler. |
+| 2 | Content-addressed files | Heavy immutable bytes: uploaded datasets, derived tables, plot PNGs, HTML reports. Filename is the SHA-256 of the content. | `src/iris/projects/` dataset + artifact writers. DB stores hash + metadata; filesystem stores content. |
+| 3 | Curated Markdown | Human-auditable view: `memory/PROJECT.md`, `DECISIONS.md`, `OPEN_QUESTIONS.md`, `DATASETS/<id>.md`. Always regenerated from SQLite — never the source of truth. | `src/iris/projects/markdown_sync.py`. |
 
-Some operations take a second input via a nested expression:
+Rules:
 
-```
-ca_trace(11).baseline_correction.x_corr(mea_trace(all).butter_bandpass.sliding_rms.gcamp_sim)
-```
+- Binaries never go in SQLite. DB holds a `sha256` + metadata; the file
+  lives under `datasets/` or `artifacts/`.
+- Markdown is a read-only mirror from the user's perspective. Edits
+  land through `propose → commit` against memory entries, which then
+  re-renders the file.
+- The SQLite schema is the single source for everything IRIS reasons
+  about. Rebuilding Markdown or the vector index from scratch is
+  supported by design.
 
-This cross-correlates the calcium trace against simulated GCaMP signals from all MEA channels.
+Schema lives in [`src/iris/projects/schema.sql`](../src/iris/projects/schema.sql).
 
 ---
 
-## 4. Operations Reference
+## Memory model
 
-### 4.1 `saturation_mask`
+IRIS's memory is layered, with each layer backed by specific tables and
+code modules.
 
-**What it does:** Detects ADC clipping and flatline artifacts in raw MEA recordings and removes them.
-
-Maxwell MEA recordings can contain episodes where the signal "rails" — the voltage hits the ADC ceiling or floor and stays flat. These artifacts corrupt downstream analysis (filters ring, RMS estimates are biased, spike detectors fire falsely). `saturation_mask` identifies these episodes and handles them.
-
-**Types:** `MEATrace → MEATrace`, `MEABank → MEABank`
-
-**Parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `min_run` | 20 | Minimum consecutive flat samples to trigger detection |
-| `eps_range` | 1.0 µV | Tolerance for "flat" — samples within this range of a reference value |
-| `lookahead` | 400 | Samples to scan ahead when checking if the signal has truly recovered |
-| `recovery_eps` | 5.0 µV | Tolerance for the lookahead recovery check |
-| `pre_samples` | 0 | Extra samples to mask before each detected episode |
-| `mode` | `"fill_nan"` | How to handle detected episodes |
-
-**Modes:**
-- `"fill_nan"` — replace saturated samples with NaN (preserves time axis)
-- `"fill_zeroes"` — replace with zeros (avoids NaN propagation through downstream filters)
-- `"cut_window"` — trim leading/trailing saturation by adjusting the data window; middle episodes are left unmasked with a warning
-
-**Algorithm:** Walks the signal sample-by-sample. When it finds `min_run` consecutive samples within `eps_range` µV of a reference value, it marks the start of a saturation episode. It extends the episode forward until the signal deviates, then uses a lookahead window to confirm the signal has truly recovered (catching brief recovery transients). Detected episodes are then handled according to `mode`.
-
-### 4.2 `notch_filter`
-
-**What it does:** Removes power-line interference (60 Hz) and its harmonics from MEA recordings.
-
-Electrical recordings inevitably pick up 60 Hz noise from the power grid, plus harmonics at 120, 180, 240, and 300 Hz. The notch filter places narrow rejection bands at each of these frequencies, suppressing the interference while preserving the neural signal.
-
-**Types:** `MEATrace → MEATrace`, `MEABank → MEABank`
-
-**Parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `notch_freq_hz` | 60.0 | Fundamental frequency to reject |
-| `notch_q` | 30.0 | Quality factor (higher = narrower rejection band) |
-| `harmonics` | [1, 2, 3, 4, 5] | Which harmonics to filter (1 = fundamental) |
-
-**Method:** For each harmonic, designs a 2nd-order IIR notch filter using `scipy.signal.iirnotch`, converts to second-order sections (SOS) for numerical stability, and applies zero-phase filtering via `sosfiltfilt`. Filters are applied sequentially — one per harmonic.
-
-### 4.3 `butter_bandpass`
-
-**What it does:** Passes frequencies within a specified band and attenuates everything outside it.
-
-For spike detection, the relevant neural signal lies roughly in the 350–6000 Hz range. The bandpass filter removes slow drifts (low frequencies) and high-frequency noise, isolating the spike waveforms.
-
-**Types:** `MEATrace → MEATrace`, `MEABank → MEABank`
-
-**Parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `low_hz` | — | Lower cutoff frequency |
-| `high_hz` | — | Upper cutoff frequency |
-| `order` | — | Filter order (higher = steeper rolloff) |
-| `zero_phase` | True | Forward-backward filtering (no phase distortion) |
-
-**Method:** Designs a Butterworth IIR filter with `scipy.signal.butter`. When `zero_phase=True`, applies forward-backward via `filtfilt` (effectively doubling the filter order with zero phase shift). Margins are trimmed after filtering to remove edge transients.
-
-### 4.4 `amp_gain_correction`
-
-**What it does:** Normalizes signal amplitude over time to compensate for slow gain changes.
-
-MEA recordings can exhibit gradual amplitude drift due to electrode impedance changes, tissue settling, or other factors. This makes spike detection unreliable — the same neuron produces larger or smaller spikes at different times. `amp_gain_correction` divides the signal by its broadband power envelope, equalizing amplitude across the recording.
-
-**Types:** `MEATrace → MEATrace`, `MEABank → MEABank`
-
-**Parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `broadband_range_hz` | — (required) | Frequency range [low, high] for broadband power |
-| `nperseg` | 4096 | STFT window size in samples |
-| `noverlap` | None | STFT overlap (None = nperseg/2) |
-| `window` | `"hann"` | STFT window function |
-
-**Method:** Computes the STFT, takes the mean power spectral density across the broadband frequency range at each time bin, computes the square root, interpolates back to the original sample rate, and divides the signal by this envelope. A floor of 10⁻¹⁰ prevents division by zero.
-
-### 4.5 `sliding_rms` / `constant_rms`
-
-**What they do:** Detect spikes (action potentials) in filtered MEA voltage traces.
-
-Neural spikes appear as brief, sharp negative deflections in extracellular recordings. Both detectors find these deflections by comparing the signal against a threshold derived from its RMS (root mean square) amplitude.
-
-- **`sliding_rms`** uses a time-varying threshold that adapts to local noise levels — better for non-stationary recordings
-- **`constant_rms`** uses a single global threshold — simpler, appropriate for stationary signals
-
-**Types:** `MEATrace → SpikeTrain`, `MEABank → _SpikeBankIntermediate`
-
-**`sliding_rms` parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `k` | 5.0 | Threshold multiplier (k × local RMS) |
-| `half_window_ms` | 250.0 | Half-width of sliding RMS window |
-| `min_spike_distance_ms` | 1.0 | Minimum gap between detected spikes |
-| `min_nonzero_fraction` | 0.2 | Fraction of non-zero samples required in window |
-| `zero_eps` | 1e-4 | Values below this are treated as silent |
-| `zero_buffer_ms` | 0.0 | Buffer around silent regions to exclude |
-
-**`constant_rms` parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `k` | 5.0 | Threshold multiplier (k × global RMS) |
-| `min_spike_distance_ms` | 1.0 | Minimum gap between detected spikes |
-
-**Method:** Both compute threshold = −k × σ (where σ is RMS or local RMS), then find peaks in the inverted signal exceeding that threshold, with a minimum inter-spike distance enforced. `sliding_rms` uses prefix-sum arrays for efficient windowed computation and handles regions of silence (zero-valued samples from upstream masking).
-
-### 4.6 `baseline_correction`
-
-**What it does:** Removes slow fluorescence drift from calcium imaging traces.
-
-Calcium traces exhibit slow baseline wander from photobleaching, focus drift, and other artifacts. This operation estimates the baseline using a rolling percentile filter and subtracts it, preserving the fast calcium transients that indicate neural activity.
-
-**Types:** `CATrace → CATrace`
-
-**Parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `window_frames` | 41 | Sliding window size for percentile filter |
-| `percentile` | 20 | Percentile used to estimate baseline (20th = below most transients) |
-
-**Method:** Applies `scipy.ndimage.percentile_filter` to the original camera-rate data to estimate the baseline, then subtracts it and adds back the mean (preserving overall fluorescence level). The corrected trace is linearly interpolated from camera frame times onto the MEA sample grid for downstream alignment.
-
-### 4.7 `rt_detect`
-
-**What it does:** Runs a convolutional neural network (CNN) on raw MEA voltage to detect spikes.
-
-Traditional spike detection (RMS thresholding) can miss overlapping spikes or fire on noise. The RTSort model (from the braindance library) is a CNN trained on labeled spike data that produces per-sample spike probability logits.
-
-**Types:** `MEATrace → RTTrace`, `MEABank → RTBank`
-
-**Parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `inference_scaling_numerator` | 12.6 | Numerator for IQR-based amplitude normalization |
-| `pre_median_frames` | None | Samples to use for IQR estimation (None = full trace) |
-
-**Method:** Loads the pre-trained ModelSpikeSorter CNN (conv subnet, CPU, float32). Computes IQR-based input scaling from the signal to normalize amplitude. Runs sliding window inference (200-sample windows at 120-sample stride), with per-window median subtraction. Output is raw logits — apply `sigmoid` to get probabilities.
-
-**Known issue:** Currently produces very large logits (~10⁸) causing sigmoid saturation. Investigation paused.
-
-### 4.8 `sigmoid` / `rt_thresh`
-
-**`sigmoid`** converts raw RTSort logits to probabilities: p = 1 / (1 + e⁻ᶻ). No parameters.
-
-**Types:** `RTTrace → RTTrace`, `RTBank → RTBank`
-
-**`rt_thresh`** detects spikes from the probability signal by finding local maxima above a threshold, with 1 ms minimum separation.
-
-**Types:** `RTTrace → SpikeTrain`, `RTBank → _SpikeBankIntermediate`
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `threshold` | 0.275 | Probability cutoff for spike detection |
-
-### 4.9 `gcamp_sim`
-
-**What it does:** Simulates what a calcium indicator (GCaMP) fluorescence trace would look like given a set of detected spikes.
-
-This bridges the gap between electrical recordings (MEA) and optical recordings (calcium imaging). By convolving a spike train with a GCaMP kernel, we generate a predicted fluorescence signal that can be compared against the actual recorded calcium trace.
-
-**Types:** `SpikeTrain → SimCalcium`, `_SpikeBankIntermediate → SimCalciumBank`
-
-**Parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `half_rise_ms` | 80.0 | GCaMP rise half-life (ms) |
-| `half_decay_ms` | 500.0 | GCaMP decay half-life (ms) |
-| `duration_ms` | 2500.0 | Kernel duration (ms) |
-| `peak_dff` | 0.20 | Peak ΔF/F amplitude of kernel |
-
-**Method:** Constructs a GCaMP kernel: k(t) = (1 − e^(−t/τ_rise)) · e^(−t/τ_decay), where τ = half_life / ln(2). The kernel is scaled so its peak equals `peak_dff`. The spike train (binary array with 1 at each spike time) is convolved with the kernel to produce the simulated trace.
-
-### 4.10 `x_corr`
-
-**What it does:** Finds which MEA electrode best matches a recorded calcium trace by cross-correlating the calcium signal against simulated GCaMP responses from all electrodes.
-
-This is the key alignment operation — it answers the question: "which electrode is recording from the same neuron that this calcium ROI is imaging?"
-
-**Types:** `CATrace × SimCalciumBank → CorrelationResult`
-
-**DSL syntax:**
 ```
-ca_trace(11).baseline_correction.x_corr(mea_trace(all).butter_bandpass.sliding_rms.gcamp_sim)
+       User input                    Assistant + tool output
+            \                            /
+             v                          v
+  +-----------------------------------------------+
+  |  L0  events          (append-only, hashed)     |   <-- everything happens here first
+  +-----------------------------------------------+
+            |                          |
+            v                          v
+  +-----------------+        +-----------------------+
+  |  L1  messages   |        |  L1  tool_calls       |
+  |  (FTS5, session |        |  (request/result,     |
+  |   buffer)       |        |   cleared on commit)  |
+  +-----------------+        +-----------------------+
+            \                          /
+             v                        v
+        +----------------------------------+
+        |  L3  memory_entries              |   <-- findings, decisions,
+        |   type, confidence, evidence,    |       caveats, open questions,
+        |   status, provenance             |       preferences
+        +----------------------------------+
+                         |
+                         v
+             +-------------------------+
+             |  runs DAG               |   <-- parent_run_id chain,
+             |  dataset -> op -> art   |       reproducibility backbone
+             +-------------------------+
+                         |
+                         v
+             +-------------------------+
+             |  operations catalog     |   <-- project-scoped + global,
+             |  versioned, tested      |       skill library (Phase 8+)
+             +-------------------------+
 ```
 
-**Parameters:**
+| Layer | Purpose | Table(s) | Code |
+|---|---|---|---|
+| L0 events | Append-only audit log. Every message, tool call, memory write, dataset import, run start/end produces an event with a hash chain. | `events` | `src/iris/projects/events.py` |
+| L1 messages | Verbatim conversation. FTS5 over `content_text`. Drives the session buffer and recall. | `messages`, `messages_fts` | `src/iris/projects/messages.py` |
+| L1 tool_calls | Paired request/result records. The result payload is nulled out after its findings are committed (see "tool-result clearing"). | `tool_calls` | `src/iris/projects/tool_calls.py` |
+| L3 memory entries | Curated semantic memory: findings, decisions, caveats, open questions, preferences, failure reflections. Proposed by extraction, committed by the user. | `memory_entries` | `src/iris/projects/memory_entries.py`, `extraction.py` |
+| Runs DAG | Provenance: which op on which dataset version produced which artifact, with parent links. | `runs`, `datasets`, `artifacts` | Phase 6 modules under `src/iris/projects/` |
+| Operations catalog | Built-in 17 ops + project-scoped versioned skills. | `operations` | `src/iris/engine/` (built-ins), `ops/<name>/v<semver>/` (project) |
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `max_lag_ms` | 500.0 | Maximum cross-correlation lag |
-| `normalize` | True | Z-score both signals before correlating |
+L2 (working set) and L4 (procedural) from the spec live on top of these
+primitives; they are assembly strategies, not new tables.
 
-**Method:** For each electrode, z-scores both the recorded calcium trace and the simulated GCaMP trace, computes their cross-correlation, and takes the maximum correlation within ±`max_lag_ms`. The electrode with the highest peak correlation is the best match. Results include the full spatial correlation map (for plotting as a heatmap over electrode positions) and the temporal alignment.
+### Propose → commit
 
-### 4.11 `spectrogram`
+Memory entries are never written silently. The assistant (via the
+`propose_memory` tool) stages entries with `status = 'proposed'`; the
+user approves or edits them in the UI; on commit they flip to
+`'active'` and the corresponding `memory/*.md` file is regenerated.
 
-**What it does:** Computes the time-frequency power spectral density of an MEA signal.
+### Tool-result clearing
 
-Visualizes how the frequency content of the signal changes over time — useful for identifying noise sources, verifying filter performance, and understanding signal characteristics.
-
-**Types:** `MEATrace → Spectrogram`
-
-**Parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `nperseg` | 4096 | STFT window size in samples |
-| `noverlap` | None | Overlap (None = nperseg/2) |
-| `window` | `"hann"` | Window function |
-| `scaling` | `"density"` | PSD scaling mode |
-| `fmin` | 0 | Lower frequency bound for display |
-| `fmax` | — | Upper frequency bound for display |
-| `db_scale` | True | Convert power to dB (10·log₁₀) |
-
-### 4.12 `freq_traces`
-
-**What it does:** Extracts power-versus-time traces at specific frequencies of interest from the STFT.
-
-Useful for tracking power-line interference (60 Hz and harmonics) over time or monitoring broadband signal power.
-
-**Types:** `MEATrace → FreqPowerTraces`
-
-**Parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `freqs_hz` | — | List of frequencies to extract (e.g., [60, 120, 300]) |
-| `broadband_range_hz` | — | Frequency range for broadband average |
-| `nperseg` | 4096 | STFT window size |
-| `noverlap` | None | Overlap |
-| `window` | `"hann"` | Window function |
+Tool results can be huge (Parquet previews, plot payloads, RTSort
+outputs). Once a tool-call's findings are distilled into a memory
+entry or an artifact row, the large result blob in `tool_calls.result`
+is replaced with a stub pointer. The event row retains the hash, so
+provenance is preserved without paying the token or disk cost on every
+context rebuild. Implemented in `src/iris/projects/tool_calls.py`.
 
 ---
 
-## 5. Caching
+## DSL and engine
 
-### Why Caching Matters
+The analysis engine is stable and not being restructured. It parses a
+dot-separated DSL into an AST and runs it through a typed executor
+with a two-tier cache.
 
-A typical pipeline might be:
 ```
-mea_trace(861).saturation_mask.notch_filter.butter_bandpass.sliding_rms.gcamp_sim
+  "mea_trace(861).butter_bandpass.spectrogram"
+              |
+              v  DSLParser
+  +-----------------------------+
+  | AST: source + op nodes      |
+  +-----------------------------+
+              |
+              v  PipelineExecutor
+  +-----------------------------+        +--------------------+
+  | Type check (input -> output)| -----> | PipelineCache      |
+  | Margin padding              |        |  mem + disk tiers  |
+  | Bank vectorization          |        +--------------------+
+  | Auto-plot on terminal node  |
+  +-----------------------------+
+              |
+              v
+        artifact + run rows in iris.sqlite
 ```
 
-If you change only the `gcamp_sim` parameters and re-run, you don't want to re-compute the saturation mask, notch filter, bandpass, and spike detection. The caching system handles this automatically.
+- 17 built-in ops (filters, spike detectors, calcium alignment,
+  spectrogram, cross-correlation, GCaMP simulation).
+- Types flow left-to-right through `TYPE_TRANSITIONS`; mismatches fail
+  before compute.
+- Cache keys include window, op params, source path, and mtime, so
+  any parameter change invalidates exactly the downstream prefix.
 
-### How It Works
-
-**Memory cache** (within a single run): When the pipeline includes multiple expressions sharing a common prefix — like `mea_trace(861).notch_filter` and `mea_trace(861).notch_filter.butter_bandpass` — the shared prefix is computed once and reused.
-
-**Disk cache** (across runs): After computing each intermediate result, it's saved as a pickle file in `cache_dir`. On subsequent runs, the executor checks for the longest cached prefix of each expression. If the first 4 of 6 operations are already cached, only the last 2 are computed.
-
-**Cache keys** include: the analysis window, margin sizes, all operation parameters, source file paths, and source file modification times. This means:
-- Changing any parameter invalidates downstream cache entries
-- Modifying a data file invalidates all cache entries that depend on it
-- Different windows produce different cache entries
-
-Both tiers can be independently enabled/disabled via `globals_cfg["memory_cache"]` and `globals_cfg["disk_cache"]`.
+Full math, types, and parameters → [`operations.md`](operations.md).
+Per-project versioned ops land in Phase 8 and live under
+`projects/<name>/ops/<op>/v<semver>/`.
 
 ---
 
-## 6. Configuration Reference
+## Agent bridge
 
-### `ops_cfg`
+The webapp is not the LLM host — the Claude Code SDK is. The bridge
+(`iris-app/server/agent-bridge.ts`) owns a single SDK session per chat
+and shuttles messages between the browser and the daemon.
 
-All operation parameters in one dict. Each key is an operation name, each value is a dict of parameter names to values. These serve as defaults — individual pipeline strings can override them inline.
+```
+ Browser (Zustand store)
+     |   WebSocket JSON {type:"user_message", text}
+     v
+ Express /ws
+     |
+     v
+ agent-bridge.ts
+     |   SDK query(prompt, options)
+     v
+ Claude Code SDK (Max subscription, --model opus)
+     |
+     |   tool_use -> bridge
+     v
+ Tool handlers (bridge)
+     |   POST :4002/memory/...  /runs/...  /datasets/...
+     v
+ Daemon routes  ->  src/iris/projects/*  ->  iris.sqlite + fs
+     |
+     v  tool_result
+ SDK  ->  bridge  ->  WebSocket  ->  browser
+```
 
-### `globals_cfg`
+Key responsibilities:
 
-| Key | Type | Description |
-|-----|------|-------------|
-| `show_ops_params` | bool | Embed a parameter panel in the bottom margin of each plot |
-| `interactive_plots` | bool | Use ipympl widget backend (hover coords, zoom/pan) vs static PNG |
-| `memory_cache` | bool | Enable in-memory prefix reuse within a pipeline run |
-| `disk_cache` | bool | Enable disk-persistent pickle cache across runs |
-
-### `paths_cfg`
-
-| Key | Description |
-|-----|-------------|
-| `mea_h5` | Path to Maxwell MEA recording (.raw.h5) |
-| `ca_traces_npz` | Path to calcium imaging traces (.npz) |
-| `rt_model_outputs_npy` | Path to precomputed RTSort outputs (.npy) |
-| `rt_model_path` | Path to RTSort model directory (init_dict.json + state_dict.pt) |
-| `output_dir` | Directory for generated outputs |
-| `cache_dir` | Directory for disk cache pickle files |
-
-### `pipeline_cfg` Conventions
-
-- Each sub-pipeline is a plain Python list
-- The first item is always a window directive: `"window_ms[start, end]"` or `"window_ms[full]"`
-- Subsequent items are DSL strings or overlay groups (lists of DSL strings)
-- Multiple sub-pipelines can be concatenated: `pipeline_cfg = section_a + section_b`
+1. **Slice builder** — before each turn, the bridge asks the daemon
+   for a context slice: L1 core memory, recent L1 messages, relevant
+   L3 entries (by FTS + recency), and open tool-calls. It packs them
+   into the SDK system prompt within a fixed token budget (spec §9).
+2. **Tool routing** — every SDK `tool_use` event dispatches to a
+   handler that issues an HTTP request to the daemon. The daemon is
+   the only thing that writes SQLite.
+3. **Tool-result clearing** — after the assistant turn closes, the
+   bridge signals the daemon to null large tool-call payloads that
+   have been superseded by memory entries.
+4. **Event streaming** — SDK events fan out over WebSocket to the
+   renderer so the UI can render tool-use pills, token counts, and
+   progress bars in real time.
 
 ---
 
-## 7. Plotting
+## Project workspace layout
 
-Every operation result is automatically plotted based on its output type:
+Each project is a self-contained folder, copy-paste portable.
 
-| Output Type | Plot Style |
-|-------------|------------|
-| `MEATrace` | Time-domain voltage trace |
-| `SpikeTrain` | Source signal + threshold curve + spike markers |
-| `CATrace` | Fluorescence trace (with baseline if corrected) |
-| `RTTrace` | Logit or probability trace |
-| `RTBank` | Multi-channel subplots (first 5 channels) |
-| `SimCalcium` | Simulated fluorescence + spike positions |
-| `CorrelationResult` | Spatial heatmap of correlations + temporal alignment |
-| `Spectrogram` | Time-frequency heatmap |
-| `FreqPowerTraces` | Power vs time at each frequency |
-| Overlay groups | Normalized signals overlaid on one axis |
+```
+projects/<name>/
+  config.toml           # project-scoped overrides (ops defaults, paths)
+  iris.sqlite           # created on first open
+  memory/               # regenerated from SQLite, user-editable via UI
+  datasets/{raw,derived}/<id>/<sha>.<ext>
+  artifacts/<sha>/...
+  ops/<op>/v<semver>/   # project-scoped skills (Phase 8+)
+  indexes/              # V2+ vector index
+```
 
-When `show_ops_params` is enabled, each plot includes a panel at the bottom listing the full operation chain and all parameter values used — making every figure self-documenting and reproducible.
+Global config lives in [`configs/config.toml`](../configs/config.toml)
+(single TOML after REVAMP Phase 0; replaces the legacy YAML quartet).
+`.iris/active_project` at the repo root records the currently open
+project for CLI + webapp.
+
+Full contract: [`projects.md`](projects.md) (rewritten under Task 10.2).
 
 ---
 
-## 8. Usage Examples
+## Request flow walkthrough
 
-### Basic spike detection
-```python
-pipeline_cfg = [
-    "window_ms[15000, 16000]",
-    "mea_trace(861).notch_filter.butter_bandpass.sliding_rms",
-]
+A user types "plot the spectrogram of channel 861 between 15 and 16
+seconds." Here is the full path from keystroke to plot.
+
 ```
-Load 1 second of channel 861 → remove 60 Hz noise → bandpass 350–6000 Hz → detect spikes with adaptive threshold.
-
-### Comparing raw vs filtered
-```python
-pipeline_cfg = [
-    "window_ms[15000, 16000]",
-    ["mea_trace(861)", "mea_trace(861).butter_bandpass"],
-]
+1. Browser
+   |   WebSocket send: {"type":"user_message","text":"plot the spectrogram..."}
+   v
+2. Express webapp (:4001)
+   |   agent-bridge receives message
+   |   GET :4002/memory/slice?session=...  (context slice)
+   |   SDK query(prompt=text, system=slice, tools=[run_pipeline, propose_memory, ...])
+   v
+3. Claude Code SDK
+   |   Plans: call `run_pipeline` with
+   |     "window_ms[15000,16000].mea_trace(861).butter_bandpass.spectrogram"
+   |   Emits tool_use
+   v
+4. agent-bridge tool handler
+   |   POST :4002/runs {dsl, project_id, session_id}
+   v
+5. Daemon /runs route
+   |   INSERT events (run_started)
+   |   PipelineExecutor runs AST (engine)
+   |     - reads dataset by sha from datasets/raw/<id>/
+   |     - hits cache or computes
+   |     - writes artifact PNG under artifacts/<sha>/
+   |   INSERT runs, artifacts, events (run_finished)
+   |   Returns {run_id, artifact_sha, preview_url}
+   v
+6. agent-bridge
+   |   tool_result -> SDK, forwards over WebSocket as tool_use + artifact event
+   v
+7. Browser
+   |   Renderer fetches artifact via :4001 -> :4002 proxy
+   |   Shows plot inline; assistant's narration streams in
+   v
+8. Session close (later)
+   |   extraction.py proposes memory entries from the turn
+   |   User approves -> markdown_sync regenerates memory/*.md
+   |   tool-result clearing nulls the large result payload
 ```
-Overlay the raw and bandpass-filtered signals on one plot.
 
-### Full MEA-to-calcium alignment
-```python
-pipeline_cfg = [
-    "window_ms[full]",
-    "ca_trace(11).baseline_correction.x_corr(mea_trace(all).butter_bandpass.sliding_rms.gcamp_sim)",
-]
-```
-For every MEA channel: bandpass → detect spikes → simulate GCaMP → cross-correlate with calcium trace 11. Find the best-matching electrode.
+Every step that mutates state produces an `events` row with a hash
+chained off the previous event, so a full replay of the project is
+always possible from L0.
 
-### Multiple windows
-```python
-overview = [
-    "window_ms[full]",
-    "mea_trace(861).saturation_mask",
-]
+---
 
-detail = [
-    "window_ms[15000, 16000]",
-    "mea_trace(861).notch_filter.butter_bandpass.sliding_rms",
-]
+## Pointers
 
-pipeline_cfg = overview + detail
-```
-Run a full-recording saturation scan, then a detailed 1-second spike analysis — in one pipeline call.
-
-### CNN spike detection
-```python
-pipeline_cfg = [
-    "window_ms[14487.05, 44352.95]",
-    "mea_trace(861).saturation_mask.notch_filter.amp_gain_correction.rt_detect.sigmoid.rt_thresh",
-]
-```
-Mask saturation → notch filter → normalize amplitude → run CNN → sigmoid → threshold to spike times.
+- Spec (authoritative, deep): [`../IRIS Memory Restructure.md`](../IRIS%20Memory%20Restructure.md)
+- Build order: [`../REVAMP.md`](../REVAMP.md)
+- Memory code map: [`../src/iris/projects/CLAUDE.md`](../src/iris/projects/CLAUDE.md)
+- Daemon routes: [`../src/iris/daemon/routes/CLAUDE.md`](../src/iris/daemon/routes/CLAUDE.md)
+- Webapp server: [`../iris-app/server/CLAUDE.md`](../iris-app/server/CLAUDE.md)
+- Op math: [`operations.md`](operations.md)
