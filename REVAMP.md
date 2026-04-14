@@ -533,7 +533,7 @@ Goal: every state change downstream of this phase writes an event row. Hash chai
 
 Goal: every chat message and tool invocation persists to SQLite with FTS5 search. Tool-result clearing lands in this phase.
 
-### [ ] Task 3.1 — messages.py
+### [x] Task 3.1 — messages.py
 
 **Phase**: 3 · **Effort**: M · **Blocks**: 3.3, 3.5
 
