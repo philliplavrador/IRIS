@@ -108,11 +108,19 @@ async def set_active_project(req: SetActiveRequest):
     from iris.projects import set_active_project as _set
 
     try:
-        _set(req.name)
+        path = _set(req.name)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    # Lazy-catalog the 17 hardcoded ops into this project's iris.sqlite on
+    # first activation (Task 8.2). Idempotent via (name, version) dedupe.
+    try:
+        from iris.daemon.app import catalog_hardcoded_ops
+
+        catalog_hardcoded_ops(path)
+    except Exception as e:  # pragma: no cover — defensive
+        print(f"[iris-daemon] catalog_hardcoded_ops failed: {e}")
     return {"active": _project_info_dict(req.name)}
 
 

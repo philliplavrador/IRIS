@@ -796,7 +796,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 ---
 
-### [ ] Task 5.4 — Daemon /artifacts
+### [x] Task 5.4 — Daemon /artifacts
 
 **Phase**: 5 · **Effort**: S · **Blocks**: 5.5
 

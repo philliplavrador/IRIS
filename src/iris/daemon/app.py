@@ -12,13 +12,17 @@ import matplotlib
 
 matplotlib.use("Agg")  # Non-interactive backend — daemon never needs GUI windows
 
+import logging
 import os
-import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+logger = logging.getLogger("iris.daemon")
+
+_HARDCODED_OP_VERSION = "1.0.0"
 
 # Module-level state — populated on startup
 _config = None
@@ -36,6 +40,65 @@ def get_iris_root() -> Path:
     if _iris_root is not None:
         return _iris_root
     return Path(os.environ.get("IRIS_ROOT", Path(__file__).resolve().parents[3]))
+
+
+def catalog_hardcoded_ops(project_path: Path) -> int:
+    """Register the 17 hardcoded ops into ``<project>/iris.sqlite``.
+
+    Idempotent on ``(name, version)``: every op is pre-looked-up via
+    :func:`operations_store.find` and skipped if already catalogued. Returns
+    the number of ops *newly* registered on this call.
+
+    Registrations are global (``project_id=None``) so the same catalog row
+    serves every project that shares this SQLite file, matches the REVAMP
+    spec, and sidesteps the ``projects`` FK (no project row is inserted by
+    ``create_project`` today).
+    """
+    if _registry is None:
+        return 0
+
+    from iris.engine.type_system import TYPE_TRANSITIONS
+    from iris.projects import db as projects_db
+    from iris.projects import operations_store
+
+    conn = projects_db.connect(project_path)
+    try:
+        projects_db.init_schema(conn)
+        newly = 0
+        for name in sorted(_registry._handlers.keys()):
+            existing = operations_store.find(
+                conn,
+                project_id=None,
+                name=name,
+                version=_HARDCODED_OP_VERSION,
+            )
+            if existing is not None:
+                continue
+            handler = _registry._handlers[name]
+            transitions = TYPE_TRANSITIONS.get(name, {})
+            signature = {
+                "kind": "hardcoded",
+                "transitions": [
+                    {"input": in_t.__name__, "output": out_t.__name__}
+                    for in_t, out_t in transitions.items()
+                ],
+            }
+            docstring = (handler.__doc__ or "").strip() or f"Hardcoded op '{name}'."
+            operations_store.register(
+                conn,
+                project_id=None,
+                name=name,
+                version=_HARDCODED_OP_VERSION,
+                kind="hardcoded",
+                signature_json=signature,
+                docstring=docstring,
+                source_code=None,
+            )
+            logger.info("cataloged hardcoded op %s@%s", name, _HARDCODED_OP_VERSION)
+            newly += 1
+        return newly
+    finally:
+        conn.close()
 
 
 @asynccontextmanager
@@ -60,12 +123,16 @@ async def lifespan(app: FastAPI):
     # must not block daemon startup — we log and continue.
     app.state.markdown_observer = None
     try:
-        from iris.projects import resolve_active_project
         from iris.daemon.services.markdown_watcher import start_watcher
+        from iris.projects import resolve_active_project
 
         active = resolve_active_project()
         if active is not None:
             app.state.markdown_observer = start_watcher(active)
+            try:
+                catalog_hardcoded_ops(active)
+            except Exception as e:  # pragma: no cover — defensive
+                print(f"[iris-daemon] catalog_hardcoded_ops failed: {e}")
     except Exception as e:  # pragma: no cover — defensive
         print(f"[iris-daemon] markdown_watcher startup failed: {e}")
 
@@ -92,12 +159,12 @@ app.add_middleware(
 )
 
 # Register route modules
-from iris.daemon.routes.projects import router as projects_router  # noqa: E402
 from iris.daemon.routes.config import router as config_router  # noqa: E402
-from iris.daemon.routes.ops import router as ops_router  # noqa: E402
-from iris.daemon.routes.sessions import router as sessions_router  # noqa: E402
-from iris.daemon.routes.pipeline import router as pipeline_router  # noqa: E402
 from iris.daemon.routes.memory import router as memory_router  # noqa: E402
+from iris.daemon.routes.ops import router as ops_router  # noqa: E402
+from iris.daemon.routes.pipeline import router as pipeline_router  # noqa: E402
+from iris.daemon.routes.projects import router as projects_router  # noqa: E402
+from iris.daemon.routes.sessions import router as sessions_router  # noqa: E402
 
 app.include_router(projects_router, prefix="/api")
 app.include_router(config_router, prefix="/api")
