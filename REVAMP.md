@@ -888,7 +888,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 ---
 
-### [ ] Task 6.6 — Frontend dataset upload + Phase 6 E2E
+### [x] Task 6.6 — Frontend dataset upload + Phase 6 E2E
 
 **Phase**: 6 · **Effort**: M · **Blocks**: Phase 7
 

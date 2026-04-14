@@ -39,20 +39,24 @@ export function ProfileConfirmation({ open, onClose, projectName, uploaded }: Pr
     setSubmitting(true)
     setResult(null)
     try {
-      const session_id = `profile-${Date.now()}`
-      const pending: number[] = []
+      const pending: string[] = []
       for (const row of Object.values(rows)) {
         if (row.skip) continue
-        const pid = await api.proposeProfileAnnotation(
-          projectName, session_id, row.fieldPath, row.annotation || row.summary,
-        )
-        pending.push(pid)
+        const proposed = await api.proposeMemoryEntry({
+          scope: 'dataset',
+          memory_type: 'preference',
+          text: `${row.fieldPath}: ${row.annotation || row.summary}`,
+          importance: 3,
+        })
+        const mid = proposed?.memory_id ?? proposed?.id
+        if (mid) pending.push(mid)
       }
       if (pending.length === 0) {
         setResult('No fields selected.')
       } else {
-        const rep = await api.commitSessionWrites(projectName, session_id, pending)
-        setResult(`Confirmed ${rep.committed} annotation${rep.committed === 1 ? '' : 's'}.`)
+        const rep = await api.commitMemoryEntries(pending)
+        const committed = rep?.committed ?? pending.length
+        setResult(`Confirmed ${committed} annotation${committed === 1 ? '' : 's'}.`)
       }
     } catch (err: any) {
       setResult(`Failed: ${err.message}`)
