@@ -772,7 +772,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 ---
 
-### [ ] Task 5.2 — Tests for artifacts
+### [x] Task 5.2 — Tests for artifacts
 
 **Phase**: 5 · **Effort**: S · **Blocks**: 5.3
 
