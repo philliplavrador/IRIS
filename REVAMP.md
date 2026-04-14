@@ -1294,7 +1294,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 12.4 — Frontend pending count + Phase 12 E2E
+### [x] Task 12.4 — Frontend pending count + Phase 12 E2E
 
 **Phase**: 12 · **Effort**: S · **Blocks**: Phase 13
 
@@ -1788,7 +1788,7 @@ Run maximalist gate across the entire repo. Fix every finding.
 
 ---
 
-### [ ] Task 24.2 — docs/architecture.md final refresh
+### [x] Task 24.2 — docs/architecture.md final refresh
 
 Reflects V1 + V2 + SpikeLab ops. **Commit**: `docs: architecture v2.0-spikelab`
 
@@ -1800,7 +1800,7 @@ Original 17 ops + ~25 SpikeLab-port ops. **Commit**: `docs: full operations cata
 
 ---
 
-### [ ] Task 24.4 — README.md refresh
+### [x] Task 24.4 — README.md refresh
 
 Features, install (note MATLAB/Kilosort optional), quickstart. **Commit**: `docs: README v2.0-spikelab`
 

@@ -234,13 +234,28 @@ function postMessageRow(
   content: string,
 ): void {
   if (!content) return
-  daemonPost('/api/memory/messages', {
+  daemonPost<{ data: { message_id: string } }>('/api/memory/messages', {
     session_id: memorySessionId,
     role,
     content,
-  }).catch((err: any) => {
-    console.error('[agent-bridge] append message failed:', err?.message ?? err)
   })
+    .then((resp) => {
+      // REVAMP Task 12.2: fire-and-forget per-turn extraction on
+      // substantive assistant messages (skip short control tokens).
+      if (role !== 'assistant') return
+      if (!content || content.length < 80) return
+      const messageId = resp?.data?.message_id
+      if (!messageId) return
+      daemonPost('/api/memory/extract/turn', { message_id: messageId }).catch(
+        () => {
+          // Silent — extraction is best-effort; missing API key or
+          // daemon transients must never block chat.
+        },
+      )
+    })
+    .catch((err: any) => {
+      console.error('[agent-bridge] append message failed:', err?.message ?? err)
+    })
 }
 
 function recordToolUse(

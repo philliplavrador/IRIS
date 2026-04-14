@@ -459,6 +459,104 @@ export function registerMemoryRoutes(app: Express): void {
     }
   });
 
+  app.post("/api/memory/extract/turn", async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost("/api/memory/extract/turn", req.body ?? {}));
+    } catch (e) {
+      forwardError(res, e);
+    }
+  });
+
+  app.get("/api/memory/pending/count", async (_req: Request, res: Response) => {
+    try {
+      res.json(await daemonGet("/api/memory/pending/count"));
+    } catch (e) {
+      forwardError(res, e);
+    }
+  });
+
+  app.post("/api/memory/reflect", async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost("/api/memory/reflect", req.body ?? {}));
+    } catch (e) {
+      forwardError(res, e);
+    }
+  });
+
+  app.get("/api/memory/contradictions", async (req: Request, res: Response) => {
+    try {
+      const qs = new URLSearchParams(
+        req.query as Record<string, string>,
+      ).toString();
+      res.json(await daemonGet(`/api/memory/contradictions${qs ? `?${qs}` : ""}`));
+    } catch (e) {
+      forwardError(res, e);
+    }
+  });
+
+  app.post(
+    "/api/memory/contradictions/:id/resolve",
+    async (req: Request, res: Response) => {
+      try {
+        const id = String(req.params.id);
+        res.json(
+          await daemonPost(
+            `/api/memory/contradictions/${encodeURIComponent(id)}/resolve`,
+            req.body ?? {},
+          ),
+        );
+      } catch (e) {
+        forwardError(res, e);
+      }
+    },
+  );
+
+  app.post("/api/memory/staleness/scan", async (_req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost("/api/memory/staleness/scan", {}));
+    } catch (e) {
+      forwardError(res, e);
+    }
+  });
+
+  app.get("/api/memory/metrics", async (_req: Request, res: Response) => {
+    try {
+      res.json(await daemonGet("/api/memory/metrics"));
+    } catch (e) {
+      forwardError(res, e);
+    }
+  });
+
+  app.post(
+    "/api/memory/operations/propose",
+    async (req: Request, res: Response) => {
+      try {
+        res.json(
+          await daemonPost("/api/memory/operations/propose", req.body ?? {}),
+        );
+      } catch (e) {
+        forwardError(res, e);
+      }
+    },
+  );
+
+  app.post(
+    "/api/memory/operations/:id/validate",
+    async (req: Request, res: Response) => {
+      try {
+        const id = String(req.params.id);
+        res.json(
+          await daemonPost(
+            `/api/memory/operations/${encodeURIComponent(id)}/validate`,
+            req.body ?? {},
+          ),
+        );
+      } catch (e) {
+        forwardError(res, e);
+      }
+    },
+  );
+
   // -- artifacts -------------------------------------------------------
   app.post("/api/memory/artifacts", async (req: Request, res: Response) => {
     try {

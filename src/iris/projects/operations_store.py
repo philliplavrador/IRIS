@@ -520,6 +520,19 @@ def propose_operation(
     if readme is not None:
         (op_dir / "README.md").write_text(readme, encoding="utf-8")
 
+    # Store the source as a code_file artifact so the FK on
+    # operations.code_artifact_id holds.
+    from iris.projects import artifacts as _artifacts
+
+    code_artifact_id = _artifacts.store(
+        conn,
+        project_path,
+        content=code.encode("utf-8"),
+        type="code_file",
+        metadata={"filename": f"{name}_v{version}.py"},
+        description=f"Source for op {name} v{version}",
+    )
+
     return register(
         conn,
         project_id=project_id,
@@ -529,6 +542,7 @@ def propose_operation(
         signature_json=signature_json or {},
         docstring=description,
         source_code=code,
+        code_artifact_id=code_artifact_id,
     )
 
 

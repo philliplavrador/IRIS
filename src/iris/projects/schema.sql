@@ -293,6 +293,25 @@ CREATE TABLE user_preferences (
 );
 
 -- ============================================================
+-- RETRIEVAL EVENTS (V3 / Phase 17 — folded into the base schema
+-- because the table is vec-free and useful for brand-new projects)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS retrieval_events (
+    retrieval_event_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    session_id TEXT,
+    query TEXT NOT NULL,
+    memory_ids_json TEXT NOT NULL,
+    was_used_json TEXT,
+    created_at TEXT NOT NULL,
+    resolved_at TEXT,
+    FOREIGN KEY (project_id) REFERENCES projects(project_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_retrieval_events_project
+    ON retrieval_events(project_id, created_at DESC);
+
+-- ============================================================
 -- SCHEMA VERSION TRACKING
 -- ============================================================
 -- Use PRAGMA user_version for migration tracking.

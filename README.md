@@ -10,7 +10,7 @@
 
 ## Status
 
-**Active rewrite in progress (2026-04).** The engine, DSL, 17 ops, and webapp shell are stable and in daily use. The memory layer is being rebuilt end-to-end per [`IRIS Memory Restructure.md`](IRIS%20Memory%20Restructure.md): Phases 0–1 are complete (SQLite schema, project lifecycle on the new workspace layout), Phase 2 (event log + session wiring) is active. Features marked *planned* below describe the target end-state — not everything on this page is shipped today. Tracker: [`REVAMP.md`](REVAMP.md).
+**V2 memory system complete (2026-04).** The engine, DSL, 17 ops, and webapp shell are stable. The memory layer rewrite per [`IRIS Memory Restructure.md`](IRIS%20Memory%20Restructure.md) is shipped through **Phase 17**: SQLite-backed memory entries with propose→commit flow, FTS5 retrieval with triple-weighted rerank, optional sqlite-vec hybrid fusion, session-end + per-turn extraction, reflection cycles, progressive summarization, generated-op validation sandbox, LLM-driven contradiction detection, type-specific temporal decay, and retrieval-to-usage metrics. SpikeLab port (Phases 18–23) is **deferred**. Tracker: [`REVAMP.md`](REVAMP.md). Release tag: `v2.0-memory`.
 
 ---
 

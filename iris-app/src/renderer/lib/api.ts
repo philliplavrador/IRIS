@@ -320,6 +320,68 @@ export const api = {
     return res.json()
   },
 
+  pendingMemoryCount: async (): Promise<number> => {
+    const res = await fetch(`${BASE}/api/memory/pending/count`)
+    if (!res.ok) return 0
+    const json = await res.json()
+    return Number(json?.data?.count ?? 0)
+  },
+
+  extractTurn: async (messageId: string): Promise<any> => {
+    const res = await fetch(`${BASE}/api/memory/extract/turn`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message_id: messageId }),
+    })
+    return res.json()
+  },
+
+  reflect: async (threshold?: number): Promise<any> => {
+    const res = await fetch(`${BASE}/api/memory/reflect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ threshold }),
+    })
+    return res.json()
+  },
+
+  listContradictions: async (resolved?: boolean): Promise<any> => {
+    const qs = resolved === undefined ? '' : `?resolved=${resolved}`
+    const res = await fetch(`${BASE}/api/memory/contradictions${qs}`)
+    return res.json()
+  },
+
+  resolveContradiction: async (
+    id: string,
+    resolutionText: string,
+    winningMemoryId: string,
+  ): Promise<any> => {
+    const res = await fetch(
+      `${BASE}/api/memory/contradictions/${encodeURIComponent(id)}/resolve`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resolution_text: resolutionText,
+          winning_memory_id: winningMemoryId,
+        }),
+      },
+    )
+    return res.json()
+  },
+
+  stalenessScan: async (): Promise<any> => {
+    const res = await fetch(`${BASE}/api/memory/staleness/scan`, {
+      method: 'POST',
+    })
+    return res.json()
+  },
+
+  memoryMetrics: async (): Promise<any> => {
+    const res = await fetch(`${BASE}/api/memory/metrics`)
+    return res.json()
+  },
+
   discardMemoryEntries: async (ids: string[]): Promise<any> => {
     const res = await fetch(`${BASE}/api/memory/entries/discard`, {
       method: 'POST',
