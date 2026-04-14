@@ -17,7 +17,7 @@ class CreateSessionRequest(BaseModel):
 async def list_sessions():
     """List analysis sessions for the active project."""
     from iris.projects import project_output_dir, resolve_active_project
-    from iris.sessions import list_sessions as _list_sessions
+    from iris.plot_sessions import list_sessions as _list_sessions
 
     project_path = resolve_active_project()
     if project_path is None:
@@ -35,7 +35,7 @@ async def list_sessions():
 async def create_session(req: CreateSessionRequest):
     """Create a new analysis session in the active project."""
     from iris.projects import project_output_dir, resolve_active_project
-    from iris.sessions import new_session
+    from iris.plot_sessions import new_session
 
     project_path = resolve_active_project()
     if project_path is None:

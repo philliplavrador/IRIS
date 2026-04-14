@@ -411,7 +411,7 @@ def cmd_sources_list(args: argparse.Namespace) -> int:
 
 
 def cmd_session_new(args: argparse.Namespace) -> int:
-    from iris.sessions import new_session
+    from iris.plot_sessions import new_session
 
     cfg = load_configs(args.config_dir)
     sd = new_session(label=args.label, output_root=cfg.paths["output_dir"])
@@ -420,7 +420,7 @@ def cmd_session_new(args: argparse.Namespace) -> int:
 
 
 def cmd_session_list(args: argparse.Namespace) -> int:
-    from iris.sessions import list_sessions
+    from iris.plot_sessions import list_sessions
 
     cfg = load_configs(args.config_dir)
     sessions = list_sessions(cfg.paths["output_dir"])
@@ -494,7 +494,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         get_recording_duration_ms,
         run_pipeline,
     )
-    from iris.sessions import new_session, write_manifest
+    from iris.plot_sessions import new_session, write_manifest
 
     cfg = load_configs(args.config_dir)
     if cfg.missing_paths:

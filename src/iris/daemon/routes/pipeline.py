@@ -72,7 +72,7 @@ async def run_pipeline(req: RunRequest):
             pass  # best-effort cache check, don't block execution
 
     # Create session for this run
-    from iris.sessions import new_session
+    from iris.plot_sessions import new_session
 
     output_dir = project_output_dir(project_path)
     session_dir = new_session(label=req.session_label, output_root=output_dir)

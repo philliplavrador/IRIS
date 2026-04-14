@@ -289,7 +289,7 @@ class PipelineExecutor:
                     _counter[0] += 1
                     # Sidecar provenance JSON next to every saved plot
                     try:
-                        from iris.sessions import write_provenance_sidecar
+                        from iris.plot_sessions import write_provenance_sidecar
                         write_provenance_sidecar(plot_path, self.ctx)
                     except Exception as e:
                         if self.ctx.verbose:

@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from iris.engine import DSLParser, PipelineContext
-from iris.sessions import (
+from iris.plot_sessions import (
     list_sessions,
     new_session,
     write_manifest,

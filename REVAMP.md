@@ -468,7 +468,7 @@ Goal: every state change downstream of this phase writes an event row. Hash chai
 
 ---
 
-### [ ] Task 2.3 — Memory-layer sessions module
+### [x] Task 2.3 — Memory-layer sessions module
 
 **Phase**: 2 · **Effort**: M · **Blocks**: 2.4, 3.1+
 
