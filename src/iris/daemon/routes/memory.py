@@ -60,6 +60,7 @@ from iris.projects import events as _events
 from iris.projects import markdown_sync as _markdown_sync
 from iris.projects import memory_entries as _memory_entries
 from iris.projects import messages as _messages
+from iris.projects import operations_store as _operations_store
 from iris.projects import resolve_active_project
 from iris.projects import runs as _runs
 from iris.projects import sessions as _sessions
@@ -811,6 +812,171 @@ async def regenerate_markdown() -> dict[str, Any]:
         _db.init_schema(conn)
         _markdown_sync.regenerate_markdown(conn, path)
         return {"data": {"ok": True}}
+    finally:
+        conn.close()
+
+
+# -- operations -------------------------------------------------------------
+
+
+class RegisterOperationRequest(BaseModel):
+    """Body for ``POST /memory/operations``.
+
+    ``scope`` decides whether the op is registered globally (``None``
+    ``project_id`` in the DB — the default, matching the hardcoded-op
+    catalog) or scoped to the active project.
+    """
+
+    name: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    kind: str = Field(min_length=1)
+    signature: dict[str, Any] = Field(default_factory=dict)
+    docstring: str = ""
+    source_code: str | None = None
+    source_hash: str | None = None
+    scope: str = Field(default="global", pattern="^(global|project)$")
+
+
+class RecordExecutionRequest(BaseModel):
+    """Body for ``POST /memory/operations/{op_id}/executions``."""
+
+    run_id: str | None = None
+    inputs_hash: str | None = None
+    success: bool
+    execution_time_ms: int | None = None
+
+
+@router.post("/memory/operations")
+async def register_operation(req: RegisterOperationRequest) -> dict[str, Any]:
+    """Register an operation in the catalog. Returns ``{op_id}``.
+
+    ``scope='global'`` (default) persists ``project_id=NULL`` — shared
+    across all projects in the DB, matching the Phase 8.2 startup
+    cataloger. ``scope='project'`` binds the op to the active project.
+    """
+    conn, project_id = _open()
+    try:
+        target_project_id: str | None = project_id if req.scope == "project" else None
+        try:
+            op_id = _operations_store.register(
+                conn,
+                project_id=target_project_id,
+                name=req.name,
+                version=req.version,
+                kind=req.kind,
+                signature_json=req.signature,
+                docstring=req.docstring,
+                source_code=req.source_code,
+                source_hash=req.source_hash,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": {"op_id": op_id}}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/operations/search")
+async def search_operations(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(default=20, ge=1, le=500),
+    scope: str = Query(default="global", pattern="^(global|project)$"),
+) -> dict[str, Any]:
+    """FTS5 BM25 search over ``operations_fts`` scoped to global or project.
+
+    Declared *before* the ``/{op_id}`` route so FastAPI's path-matching
+    doesn't swallow ``search`` as an op id.
+    """
+    conn, project_id = _open()
+    try:
+        target_project_id: str | None = project_id if scope == "project" else None
+        try:
+            hits = _operations_store.search(
+                conn,
+                project_id=target_project_id,
+                query=q,
+                limit=limit,
+            )
+        except sqlite3.OperationalError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": hits}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/operations")
+async def list_operations(
+    kind: str | None = Query(default=None),
+    status: str = Query(default="active"),
+    limit: int = Query(default=100, ge=1, le=10_000),
+    scope: str = Query(default="global", pattern="^(global|project)$"),
+) -> dict[str, Any]:
+    """List registered operations.
+
+    ``scope='global'`` (default) returns the shared catalog (where the
+    hardcoded ops live). ``scope='project'`` returns ops registered under
+    the active project. ``status`` accepts the public ``active`` alias plus
+    the schema-native enum values; ``kind`` is accepted for API stability
+    but is a no-op filter in V1 (see :mod:`operations_store`).
+    """
+    conn, project_id = _open()
+    try:
+        target_project_id: str | None = project_id if scope == "project" else None
+        rows = _operations_store.list(
+            conn,
+            project_id=target_project_id,
+            kind=kind,
+            status=status,
+            limit=limit,
+        )
+        return {"data": rows}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/operations/{op_id}")
+async def get_operation(op_id: str) -> dict[str, Any]:
+    """Fetch one operation row by ``op_id``.
+
+    Not scoped by project — ops can be global (``project_id=NULL``) or
+    project-bound, and the id is unique across both spaces.
+    """
+    conn, _ = _open()
+    try:
+        row = conn.execute(
+            f"SELECT {_operations_store._OP_COLUMNS} FROM operations WHERE op_id = ?",
+            (op_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"operation {op_id!r} not found")
+        data = _operations_store._row_to_dict(tuple(row))
+        return {"data": data}
+    finally:
+        conn.close()
+
+
+@router.post("/memory/operations/{op_id}/executions")
+async def record_operation_execution(op_id: str, req: RecordExecutionRequest) -> dict[str, Any]:
+    """Log one execution of ``op_id`` and bump the op's aggregates."""
+    conn, _ = _open()
+    try:
+        exists = conn.execute("SELECT 1 FROM operations WHERE op_id = ?", (op_id,)).fetchone()
+        if exists is None:
+            raise HTTPException(status_code=404, detail=f"operation {op_id!r} not found")
+        try:
+            execution_id = _operations_store.record_execution(
+                conn,
+                operation_id=op_id,
+                run_id=req.run_id,
+                inputs_hash=req.inputs_hash,
+                success=req.success,
+                execution_time_ms=req.execution_time_ms,
+            )
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": {"execution_id": execution_id}}
     finally:
         conn.close()
 

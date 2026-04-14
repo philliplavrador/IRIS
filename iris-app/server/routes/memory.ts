@@ -261,6 +261,61 @@ export function registerMemoryRoutes(app: Express): void {
     }
   })
 
+  // -- operations ------------------------------------------------------
+  app.post('/api/memory/operations', async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost('/api/memory/operations', req.body ?? {}))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  // `search` before `:opId` so Express's registered-order match doesn't
+  // route `/operations/search` into the single-op fetch handler.
+  app.get('/api/memory/operations/search', async (req: Request, res: Response) => {
+    try {
+      const qs = new URLSearchParams(req.query as Record<string, string>).toString()
+      res.json(await daemonGet(`/api/memory/operations/search${qs ? `?${qs}` : ''}`))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.get('/api/memory/operations', async (req: Request, res: Response) => {
+    try {
+      const qs = new URLSearchParams(req.query as Record<string, string>).toString()
+      res.json(await daemonGet(`/api/memory/operations${qs ? `?${qs}` : ''}`))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.get('/api/memory/operations/:opId', async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.opId)
+      res.json(await daemonGet(`/api/memory/operations/${encodeURIComponent(id)}`))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.post(
+    '/api/memory/operations/:opId/executions',
+    async (req: Request, res: Response) => {
+      try {
+        const id = String(req.params.opId)
+        res.json(
+          await daemonPost(
+            `/api/memory/operations/${encodeURIComponent(id)}/executions`,
+            req.body ?? {},
+          ),
+        )
+      } catch (e) {
+        forwardError(res, e)
+      }
+    },
+  )
+
   // -- extraction ------------------------------------------------------
   app.post('/api/memory/extract', async (req: Request, res: Response) => {
     try {

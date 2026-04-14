@@ -1013,7 +1013,7 @@ Goal: catalog every hardcoded op (the existing 17) into the `operations` table. 
 
 ---
 
-### [ ] Task 8.3 — Daemon /operations
+### [x] Task 8.3 — Daemon /operations
 
 **Phase**: 8 · **Effort**: S · **Blocks**: 8.4
 
