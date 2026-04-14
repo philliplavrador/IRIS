@@ -1431,7 +1431,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ## Phase 16 — V2: Contradictions + Staleness
 
-### [ ] Task 16.1 — contradictions.py
+### [x] Task 16.1 — contradictions.py
 
 **Phase**: 16 · **Effort**: M · **Blocks**: 16.2
 
