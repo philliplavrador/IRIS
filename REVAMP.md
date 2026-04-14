@@ -699,7 +699,7 @@ Goal: collapse the old `goals` / `decisions` / `learned_facts` tables into one `
 
 ---
 
-### [ ] Task 4.5 — markdown_sync.py
+### [x] Task 4.5 — markdown_sync.py
 
 **Phase**: 4 · **Effort**: L · **Blocks**: 4.6
 
