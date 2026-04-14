@@ -1071,7 +1071,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 9.3 — slice_builder.py
+### [x] Task 9.3 — slice_builder.py
 
 **Phase**: 9 · **Effort**: L · **Blocks**: 9.4
 
