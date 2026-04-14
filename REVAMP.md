@@ -1444,7 +1444,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 16.2 — staleness.py
+### [x] Task 16.2 — staleness.py
 
 **Phase**: 16 · **Effort**: M · **Blocks**: 16.3
 
