@@ -588,7 +588,7 @@ Goal: every chat message and tool invocation persists to SQLite with FTS5 search
 
 ---
 
-### [ ] Task 3.5 — agent-bridge.ts: message + tool-call logging
+### [x] Task 3.5 — agent-bridge.ts: message + tool-call logging
 
 **Phase**: 3 · **Effort**: M · **Blocks**: 3.6
 

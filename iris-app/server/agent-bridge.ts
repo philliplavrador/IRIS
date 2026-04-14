@@ -122,6 +122,7 @@ async function endMemorySessionInternal(
   const sid = projectMemorySessions.get(projectName)
   if (!sid) return
   projectMemorySessions.delete(projectName)
+  clearPendingForProject(projectName)
   try {
     await ensureActiveProject(projectName)
     await daemonPost(
@@ -147,73 +148,120 @@ export function getMemorySessionId(projectName: string): string | undefined {
 }
 
 /**
- * L0 conversation logging — fire-and-forget append to the per-session JSONL.
- * §3.1: the one memory that must never be lost. Failures logged, never raised.
+ * Per-turn persistence (REVAMP Task 3.5). Every assistant message lands in
+ * ``messages``; every tool_use/tool_result pair lands in ``tool_calls``.
+ *
+ * tool_use and tool_result can arrive in separate SDK messages. We buffer the
+ * ``tool_use`` input on first sight and flush one ``POST /memory/tool_calls``
+ * when the matching ``tool_result`` block arrives — so the row hits SQLite
+ * with success + output_summary in a single insert (the Python API takes
+ * those fields up front; see ``tool_calls.append_tool_call``). If a
+ * conversation ends before the result returns, ``pendingToolCalls`` is
+ * cleared by ``endMemorySessionInternal`` to prevent cross-session leaks.
  */
-function logTurn(
-  projectName: string,
-  sessionId: string,
-  role: 'user' | 'assistant' | 'system' | 'tool',
-  text: string,
-  extras?: { tool_calls?: unknown[]; tool_results?: unknown[] },
+type PendingToolCall = {
+  projectName: string
+  tool_name: string
+  input: unknown
+  started_at: number
+}
+const pendingToolCalls = new Map<string, PendingToolCall>() // key: SDK tool_use_id
+
+function firstLine(text: string, maxChars: number): string {
+  const line = (text ?? '').split(/\r?\n/).map((s) => s.trim()).find((s) => s.length > 0) ?? ''
+  return line.length > maxChars ? line.slice(0, maxChars - 1) + '\u2026' : line
+}
+
+function postMessageRow(
+  memorySessionId: string,
+  role: 'user' | 'assistant' | 'tool' | 'system',
+  content: string,
 ): void {
-  daemonPost('/api/memory/append_turn', {
-    project: projectName,
-    session_id: sessionId,
+  if (!content) return
+  daemonPost('/api/memory/messages', {
+    session_id: memorySessionId,
     role,
-    text,
-    tool_calls: extras?.tool_calls ?? null,
-    tool_results: extras?.tool_results ?? null,
-  }).catch((err) => {
-    console.error('[agent-bridge] L0 append_turn failed:', err?.message ?? err)
+    content,
+  }).catch((err: any) => {
+    console.error('[agent-bridge] append message failed:', err?.message ?? err)
   })
 }
 
-/** Extract a logged turn from an SDK message, or null if not loggable. */
-function extractTurn(msg: any): {
-  role: 'assistant' | 'tool'
-  text: string
-  tool_calls?: unknown[]
-  tool_results?: unknown[]
-} | null {
-  if (!msg || typeof msg !== 'object') return null
+function recordToolUse(
+  projectName: string,
+  tool_use_id: string,
+  tool_name: string,
+  input: unknown,
+): void {
+  pendingToolCalls.set(tool_use_id, {
+    projectName,
+    tool_name,
+    input,
+    started_at: Date.now(),
+  })
+}
+
+function finalizeToolCall(
+  memorySessionId: string,
+  tool_use_id: string,
+  rawContent: string,
+  isError: boolean,
+): void {
+  const pending = pendingToolCalls.get(tool_use_id)
+  if (!pending) return
+  pendingToolCalls.delete(tool_use_id)
+  const summary = firstLine(rawContent, 240) || '<empty output>'
+  daemonPost('/api/memory/tool_calls', {
+    session_id: memorySessionId,
+    tool_name: pending.tool_name,
+    input: pending.input,
+    success: !isError,
+    output_summary: summary,
+    error: isError ? summary : null,
+    execution_time_ms: Date.now() - pending.started_at,
+  }).catch((err: any) => {
+    console.error('[agent-bridge] append tool_call failed:', err?.message ?? err)
+  })
+}
+
+function clearPendingForProject(projectName: string): void {
+  for (const [id, p] of pendingToolCalls) {
+    if (p.projectName === projectName) pendingToolCalls.delete(id)
+  }
+}
+
+/** Persist an SDK message to the memory layer. Fire-and-forget. */
+function persistSdkMessage(projectName: string, memorySessionId: string, msg: any): void {
+  if (!msg || typeof msg !== 'object') return
   if (msg.type === 'assistant' && msg.message?.content) {
     const blocks = msg.message.content as any[]
     const textParts: string[] = []
-    const tool_calls: unknown[] = []
     for (const b of blocks) {
-      if (b?.type === 'text' && typeof b.text === 'string') textParts.push(b.text)
-      else if (b?.type === 'tool_use') tool_calls.push({ id: b.id, name: b.name, input: b.input })
+      if (b?.type === 'text' && typeof b.text === 'string') {
+        textParts.push(b.text)
+      } else if (b?.type === 'tool_use' && typeof b.id === 'string') {
+        recordToolUse(projectName, b.id, String(b.name ?? ''), b.input)
+      }
     }
-    return {
-      role: 'assistant',
-      text: textParts.join('\n'),
-      ...(tool_calls.length ? { tool_calls } : {}),
-    }
+    const text = textParts.join('\n').trim()
+    if (text) postMessageRow(memorySessionId, 'assistant', text)
+    return
   }
   if (msg.type === 'user' && msg.message?.content) {
     const blocks = msg.message.content as any[]
-    const tool_results: unknown[] = []
     const textParts: string[] = []
     for (const b of blocks) {
-      if (b?.type === 'tool_result') {
-        tool_results.push({
-          tool_use_id: b.tool_use_id,
-          content: typeof b.content === 'string' ? b.content : JSON.stringify(b.content),
-          is_error: b.is_error ?? false,
-        })
+      if (b?.type === 'tool_result' && typeof b.tool_use_id === 'string') {
+        const content =
+          typeof b.content === 'string' ? b.content : JSON.stringify(b.content)
+        finalizeToolCall(memorySessionId, b.tool_use_id, content, b.is_error === true)
       } else if (b?.type === 'text' && typeof b.text === 'string') {
         textParts.push(b.text)
       }
     }
-    if (!tool_results.length && !textParts.length) return null
-    return {
-      role: 'tool',
-      text: textParts.join('\n'),
-      ...(tool_results.length ? { tool_results } : {}),
-    }
+    const text = textParts.join('\n').trim()
+    if (text) postMessageRow(memorySessionId, 'tool', text)
   }
-  return null
 }
 
 /** Extract a YAML value that may be single-line or a block scalar (|) */
@@ -410,6 +458,11 @@ export async function sendMessage(prompt: string, broadcast: BroadcastFn, projec
       }
     })
 
+    // memorySessionPromise resolves to the memory-layer session_id once the
+    // daemon has opened it. All persistence calls chain off this promise so
+    // late-arriving messages still land in the right session — and we never
+    // block the SDK stream waiting for it.
+    let memorySessionPromise: Promise<string | null> = Promise.resolve(null)
     let userTurnLogged = false
     for await (const msg of messages) {
       if (msg.type === 'system' && 'subtype' in msg && (msg as any).subtype === 'init') {
@@ -432,34 +485,29 @@ export async function sendMessage(prompt: string, broadcast: BroadcastFn, projec
           }
           projectSessions.set(sessionKey, newSessionId)
         }
-        // SDK session_id only becomes known after the first init message,
-        // so log the user prompt here (not before query()) to land it in the
-        // correct session file.
-        if (projectName && !userTurnLogged && newSessionId) {
-          logTurn(projectName, newSessionId, 'user', prompt)
-          userTurnLogged = true
-        }
-        // REVAMP Task 2.5: open a memory-layer session on the first init of
-        // a conversation. Fire-and-forget so the stream never blocks on the
-        // daemon round trip. Subsequent messages in the same SDK session
-        // will find the cached id and skip the call.
+        // REVAMP Task 2.5 + 3.5: open a memory-layer session on the first
+        // init of a conversation. The returned promise is reused by every
+        // later persistSdkMessage call so writes scope to the right session
+        // even if the daemon round-trip hasn't completed yet.
         if (projectName && systemPrompt) {
-          startMemorySession(projectName, systemPrompt).catch(() => {})
+          memorySessionPromise = startMemorySession(projectName, systemPrompt)
+        }
+        // Log the user prompt as the opening message row.
+        if (projectName && !userTurnLogged) {
+          userTurnLogged = true
+          memorySessionPromise.then((sid) => {
+            if (sid) postMessageRow(sid, 'user', prompt)
+          })
         }
       }
 
-      // L0 append (§3.1) — fire-and-forget, never blocks the stream.
+      // REVAMP Task 3.5: persist every assistant message + tool call to the
+      // memory layer. Fire-and-forget — failures log but never break chat.
       if (projectName) {
-        const activeSessionId = projectSessions.get(sessionKey)
-        if (activeSessionId) {
-          const turn = extractTurn(msg)
-          if (turn) {
-            logTurn(projectName, activeSessionId, turn.role, turn.text, {
-              tool_calls: turn.tool_calls,
-              tool_results: turn.tool_results,
-            })
-          }
-        }
+        const captured = msg
+        memorySessionPromise.then((sid) => {
+          if (sid) persistSdkMessage(projectName, sid, captured)
+        })
       }
 
       broadcast('agent:message', JSON.parse(JSON.stringify(msg)))
