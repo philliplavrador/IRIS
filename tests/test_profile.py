@@ -97,6 +97,47 @@ def test_profile_tiny_csv_populates_schema_and_proposes_drafts(
         assert any(name in text for text in draft_texts)
 
 
+def test_profile_parquet_populates_schema_and_proposes_drafts(
+    project_setup: tuple[sqlite3.Connection, Path], tmp_path: Path
+) -> None:
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("pyarrow")
+
+    src = tmp_path / "sig.parquet"
+    df = pd.DataFrame(
+        {
+            "t": [0.0, 0.1, 0.2],
+            "label": ["a", "b", "a"],
+        }
+    )
+    df.to_parquet(src, index=False)
+
+    conn, project_path = project_setup
+    dataset_id, version_id = import_dataset(conn, project_path, source_path=src, name="sig_pq")
+
+    result = profile_dataset(conn, project_path, dataset_id=dataset_id, version_id=version_id)
+
+    assert result["n_rows"] == 3
+    col_names = [c["name"] for c in result["columns"]]
+    assert col_names == ["t", "label"]
+
+    row = conn.execute(
+        "SELECT schema_json, row_count FROM dataset_versions WHERE dataset_version_id = ?",
+        (version_id,),
+    ).fetchone()
+    assert row["row_count"] == 3
+    assert json.loads(row["schema_json"])["suffix"] == ".parquet"
+
+    drafts = memory_mod.query(
+        conn,
+        project_id="p1",
+        status="draft",
+        scope="dataset",
+        dataset_id=dataset_id,
+    )
+    assert len(drafts) == len(col_names)
+
+
 def test_profile_rejects_mismatched_version(
     project_setup: tuple[sqlite3.Connection, Path], tmp_path: Path
 ) -> None:

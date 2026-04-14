@@ -876,7 +876,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 ---
 
-### [ ] Task 6.5 — Tests for datasets + profile
+### [x] Task 6.5 — Tests for datasets + profile
 
 **Phase**: 6 · **Effort**: M · **Blocks**: 6.6
 
