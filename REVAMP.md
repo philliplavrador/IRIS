@@ -687,7 +687,7 @@ Goal: collapse the old `goals` / `decisions` / `learned_facts` tables into one `
 
 ---
 
-### [ ] Task 4.4 — Tests for memory_entries + extraction
+### [x] Task 4.4 — Tests for memory_entries + extraction
 
 **Phase**: 4 · **Effort**: M · **Blocks**: 4.5
 
@@ -717,7 +717,7 @@ Goal: collapse the old `goals` / `decisions` / `learned_facts` tables into one `
 
 ---
 
-### [ ] Task 4.6 — Markdown file watcher + endpoint
+### [x] Task 4.6 — Markdown file watcher + endpoint
 
 **Phase**: 4 · **Effort**: M · **Blocks**: 4.7
 
@@ -732,7 +732,7 @@ Goal: collapse the old `goals` / `decisions` / `learned_facts` tables into one `
 
 ---
 
-### [ ] Task 4.7 — Frontend rewire + Phase 4 E2E
+### [x] Task 4.7 — Frontend rewire + Phase 4 E2E
 
 **Phase**: 4 · **Effort**: M · **Blocks**: Phase 5
 
