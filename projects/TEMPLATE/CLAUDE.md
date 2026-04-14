@@ -1,29 +1,45 @@
-# Project navigation
+# Project navigation (TEMPLATE)
 
-This is a IRIS project workspace. The webapp and analysis agent use this project to scope all work — uploaded data, conversations, memory, plots, and reports live here.
+This is the committed skeleton copied into every new IRIS project. A real
+project is a self-contained, portable folder: copy or move the directory to
+back up, archive, or share the work.
 
-## Read on startup (in order)
-1. `claude_config.yaml` — project name, description, behavior dials, per-project overrides
-2. Pinned memory slice — assembled by the daemon (`/api/memory/build_slice`) from L2 last digest + L3 active goals/decisions/facts + confirmed profile annotations. Injected into the system prompt automatically; do NOT read memory files directly.
+## Layout (spec: `IRIS Memory Restructure.md` §6)
 
-## Read on demand (via tools, never by auto-load)
-- `conversations/<session>.jsonl` — L0 raw turns; access via `read_conversation`
-- `ledger.sqlite` — L1 event ledger; access via `read_ledger` / `recall`
-- `knowledge.sqlite` — L3 curated knowledge; access via `recall` or knowledge list endpoints
-- `digests/<session>.json` — L2 session digests; access via `recall` or `get`
-- `views/history.md`, `views/analysis_log.md` — regenerated human-readable views of the SQLite stores
-- `claude_references/INDEX.md` if present — cached research
-- `user_references/` — user-placed references
-- `report.md` — the living analysis report
-- `output/` — existing sessions and plot sidecars
-- `custom_ops/` — project-scoped Python operations
-- `input_data/` — uploaded datasets
+```
+<project>/
+├── config.toml           # Per-project config (name, description, dials, overrides)
+├── iris.sqlite           # Runtime-created by db.init_schema(); NOT committed
+├── memory/               # Human-readable curated notes (markdown)
+│   ├── PROJECT.md        # Goals, hypotheses, open questions, caveats, preferences
+│   ├── DECISIONS.md      # Decision & conclusion register
+│   ├── OPEN_QUESTIONS.md # Open questions register
+│   └── DATASETS/         # One <dataset-id>.md card per imported dataset
+├── datasets/
+│   ├── raw/<dataset-id>/<sha256>.<ext>     # Original uploads (content-addressed)
+│   └── derived/<dataset-id>/<sha256>.<ext> # Transformed versions
+├── artifacts/<sha256>/   # Content-addressed outputs (plots, reports, caches)
+├── ops/<op-name>/v<semver>/  # Project-scoped versioned operations
+└── indexes/              # Vector / FTS indexes (runtime, not committed)
+```
 
-## Never load automatically
-- `.cache/` contents
-- Any SQLite / JSONL memory file (use the tool endpoints)
+## Key principles
+
+- `iris.sqlite` is the programmatic interface; the Markdown files in `memory/`
+  are the human interface. Both are kept in sync.
+- Immutable "heavy" objects (datasets, artifacts) live outside mutable curated
+  notes and outside versioned ops.
+- Each project is self-contained — no cross-project file dependencies.
+
+## Runtime-created, not committed
+
+`iris.sqlite` (and its `-wal` / `-shm` siblings) are created by
+`db.init_schema()` on first use. The `indexes/`, `datasets/`, and `artifacts/`
+directories keep only `.gitkeep` markers in the template; their real contents
+are gitignored.
 
 ## See also
-- [../../CLAUDE.md](../../CLAUDE.md) — repo root navigation
-- [../../docs/iris-memory.md](../../docs/iris-memory.md) — memory architecture
-- [../../docs/iris-behavior.md](../../docs/iris-behavior.md) — behavior blueprint
+
+- [../CLAUDE.md](../CLAUDE.md) — `projects/` directory navigation
+- [../../src/iris/projects/CLAUDE.md](../../src/iris/projects/CLAUDE.md) — lifecycle & memory API
+- `IRIS Memory Restructure.md` §6 — filesystem layout spec

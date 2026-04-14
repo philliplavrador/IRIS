@@ -66,6 +66,19 @@ cache/
 # IRIS active-project pointer (per-checkout state)
 .iris/
 
+# IRIS per-project runtime artifacts (TEMPLATE is kept via projects/.gitignore)
+projects/*/iris.sqlite
+projects/*/iris.sqlite-wal
+projects/*/iris.sqlite-shm
+projects/*/indexes/*
+!projects/*/indexes/.gitkeep
+projects/*/datasets/raw/*
+!projects/*/datasets/raw/.gitkeep
+projects/*/datasets/derived/*
+!projects/*/datasets/derived/.gitkeep
+projects/*/artifacts/*
+!projects/*/artifacts/.gitkeep
+
 # Recordings & model weights — too large for git
 *.h5
 *.raw.h5

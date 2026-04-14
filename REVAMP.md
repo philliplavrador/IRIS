@@ -154,7 +154,7 @@ Goal: clear every file destined for deletion before any rewrite begins. Build wi
 
 ---
 
-### [ ] Task 0.6 — Rebuild TEMPLATE per spec §6
+### [x] Task 0.6 — Rebuild TEMPLATE per spec §6
 
 **Phase**: 0 · **Effort**: M · **Blocks**: 1.7
 
