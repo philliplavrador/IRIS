@@ -490,7 +490,7 @@ Goal: every state change downstream of this phase writes an event row. Hash chai
 
 ---
 
-### [ ] Task 2.4 — Daemon /memory/events + /memory/sessions + Express proxy
+### [x] Task 2.4 — Daemon /memory/events + /memory/sessions + Express proxy
 
 **Phase**: 2 · **Effort**: M · **Blocks**: 2.5
 

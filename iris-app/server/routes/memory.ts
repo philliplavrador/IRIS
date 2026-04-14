@@ -1,141 +1,82 @@
 /**
  * Express routes for the IRIS memory tool surface.
  *
- * Thin proxy layer over the Python daemon's `/api/memory/*` endpoints. The
- * frontend (curation ritual UI, memory inspector, profile confirmation) and
- * the Claude agent both hit these paths. Keeping them on the Express side
- * means a consistent `/api/*` surface for the React app and allows
- * per-request shaping if ever needed.
+ * Phase 2 (REVAMP Task 2.4): thin proxy over the Python daemon's real
+ * `/api/memory/events` and `/api/memory/sessions/*` endpoints. The legacy
+ * L3 surface (`/memory/recall`, `/memory/propose_*`, `/memory/commit_*`,
+ * etc.) was stubbed 503 in Phase 0 and is **not** proxied here anymore —
+ * those endpoints come back online in Phases 3-10 as their server
+ * modules land and the frontend re-adopts them.
  */
 import type { Express, Request, Response } from 'express'
 import { daemonGet, daemonPost } from '../services/daemon-client.js'
 
-type Proxy = (path: string, body?: unknown) => Promise<unknown>
-
-const proxyPost: Proxy = (path, body) => daemonPost(path, body ?? {})
+function forwardError(res: Response, e: unknown): void {
+  const msg = e instanceof Error ? e.message : String(e)
+  // Best-effort: daemon-client throws with the status code baked into the
+  // message. We don't parse that here — just report 502 with the message
+  // so the frontend shows the daemon's explanation verbatim.
+  res.status(502).json({ error: msg })
+}
 
 export function registerMemoryRoutes(app: Express): void {
-  // -- retrieval ---------------------------------------------------------
-  app.post('/api/memory/recall', async (req: Request, res: Response) => {
+  // -- events ----------------------------------------------------------
+  app.get('/api/memory/events', async (req: Request, res: Response) => {
     try {
-      const data = await proxyPost('/api/memory/recall', req.body)
-      res.json(data)
-    } catch (e: any) {
-      res.status(502).json({ error: e.message })
+      const qs = new URLSearchParams(req.query as Record<string, string>).toString()
+      const path = `/api/memory/events${qs ? `?${qs}` : ''}`
+      res.json(await daemonGet(path))
+    } catch (e) {
+      forwardError(res, e)
     }
   })
 
-  app.post('/api/memory/get', async (req, res) => {
+  app.get('/api/memory/events/:eventId', async (req: Request, res: Response) => {
     try {
-      res.json(await proxyPost('/api/memory/get', req.body))
-    } catch (e: any) { res.status(502).json({ error: e.message }) }
+      const eventId = String(req.params.eventId)
+      res.json(await daemonGet(`/api/memory/events/${encodeURIComponent(eventId)}`))
+    } catch (e) {
+      forwardError(res, e)
+    }
   })
 
-  app.post('/api/memory/read_conversation', async (req, res) => {
+  app.post('/api/memory/events/verify_chain', async (req: Request, res: Response) => {
     try {
-      res.json(await proxyPost('/api/memory/read_conversation', req.body))
-    } catch (e: any) { res.status(502).json({ error: e.message }) }
+      res.json(await daemonPost('/api/memory/events/verify_chain', req.body ?? {}))
+    } catch (e) {
+      forwardError(res, e)
+    }
   })
 
-  app.post('/api/memory/append_turn', async (req, res) => {
+  // -- sessions --------------------------------------------------------
+  app.post('/api/memory/sessions/start', async (req: Request, res: Response) => {
     try {
-      res.json(await proxyPost('/api/memory/append_turn', req.body))
-    } catch (e: any) { res.status(502).json({ error: e.message }) }
+      res.json(await daemonPost('/api/memory/sessions/start', req.body ?? {}))
+    } catch (e) {
+      forwardError(res, e)
+    }
   })
 
-  app.post('/api/memory/read_ledger', async (req, res) => {
+  app.post('/api/memory/sessions/:sessionId/end', async (req: Request, res: Response) => {
     try {
-      res.json(await proxyPost('/api/memory/read_ledger', req.body))
-    } catch (e: any) { res.status(502).json({ error: e.message }) }
+      const sessionId = String(req.params.sessionId)
+      res.json(
+        await daemonPost(
+          `/api/memory/sessions/${encodeURIComponent(sessionId)}/end`,
+          req.body ?? {},
+        ),
+      )
+    } catch (e) {
+      forwardError(res, e)
+    }
   })
 
-  // -- proposals ---------------------------------------------------------
-  const proposals = [
-    'propose_decision',
-    'propose_goal',
-    'propose_fact',
-    'propose_declined',
-    'propose_profile_annotation',
-    'propose_digest_edit',
-  ]
-  for (const name of proposals) {
-    app.post(`/api/memory/${name}`, async (req, res) => {
-      try {
-        res.json(await proxyPost(`/api/memory/${name}`, req.body))
-      } catch (e: any) { res.status(502).json({ error: e.message }) }
-    })
-  }
-
-  // -- commit + pending + digest ----------------------------------------
-  app.post('/api/memory/commit_session_writes', async (req, res) => {
+  app.get('/api/memory/sessions/:sessionId', async (req: Request, res: Response) => {
     try {
-      res.json(await proxyPost('/api/memory/commit_session_writes', req.body))
-    } catch (e: any) { res.status(502).json({ error: e.message }) }
-  })
-
-  app.get('/api/memory/draft_digest', async (req, res) => {
-    try {
-      const qs = new URLSearchParams(req.query as Record<string, string>).toString()
-      res.json(await daemonGet(`/api/memory/draft_digest?${qs}`))
-    } catch (e: any) { res.status(502).json({ error: e.message }) }
-  })
-
-  app.get('/api/memory/pending', async (req, res) => {
-    try {
-      const qs = new URLSearchParams(req.query as Record<string, string>).toString()
-      res.json(await daemonGet(`/api/memory/pending${qs ? '?' + qs : ''}`))
-    } catch (e: any) { res.status(502).json({ error: e.message }) }
-  })
-
-  // -- pinned slice + maintenance ---------------------------------------
-  app.post('/api/memory/build_slice', async (req, res) => {
-    try {
-      res.json(await proxyPost('/api/memory/build_slice', req.body))
-    } catch (e: any) { res.status(502).json({ error: e.message }) }
-  })
-
-  app.post('/api/memory/rollover', async (req, res) => {
-    try {
-      res.json(await proxyPost('/api/memory/rollover', req.body))
-    } catch (e: any) { res.status(502).json({ error: e.message }) }
-  })
-
-  app.post('/api/memory/regenerate_views', async (req, res) => {
-    try {
-      const project = req.query.project as string | undefined
-      const path = project
-        ? `/api/memory/regenerate_views?project=${encodeURIComponent(project)}`
-        : '/api/memory/regenerate_views'
-      res.json(await proxyPost(path))
-    } catch (e: any) { res.status(502).json({ error: e.message }) }
-  })
-
-  app.post('/api/memory/profile_data', async (req, res) => {
-    try {
-      res.json(await proxyPost('/api/memory/profile_data', req.body))
-    } catch (e: any) { res.status(502).json({ error: e.message }) }
-  })
-
-  // -- inspector listing + mutation -------------------------------------
-  app.get('/api/memory/list_knowledge', async (req, res) => {
-    try {
-      const qs = new URLSearchParams(req.query as Record<string, string>).toString()
-      res.json(await daemonGet(`/api/memory/list_knowledge?${qs}`))
-    } catch (e: any) { res.status(502).json({ error: e.message }) }
-  })
-
-  for (const name of ['set_status', 'delete_row', 'supersede_fact', 'discard_pending', 'replace_draft']) {
-    app.post(`/api/memory/${name}`, async (req, res) => {
-      try {
-        res.json(await proxyPost(`/api/memory/${name}`, req.body))
-      } catch (e: any) { res.status(502).json({ error: e.message }) }
-    })
-  }
-
-  app.get('/api/memory/list_digests', async (req, res) => {
-    try {
-      const qs = new URLSearchParams(req.query as Record<string, string>).toString()
-      res.json(await daemonGet(`/api/memory/list_digests${qs ? '?' + qs : ''}`))
-    } catch (e: any) { res.status(502).json({ error: e.message }) }
+      const sessionId = String(req.params.sessionId)
+      res.json(await daemonGet(`/api/memory/sessions/${encodeURIComponent(sessionId)}`))
+    } catch (e) {
+      forwardError(res, e)
+    }
   })
 }

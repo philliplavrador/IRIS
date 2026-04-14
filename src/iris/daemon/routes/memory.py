@@ -1,176 +1,282 @@
-"""Stub memory routes — Phase 0 of the memory layer rewrite.
+"""Memory-layer HTTP routes for the IRIS daemon.
 
-The legacy memory modules (knowledge, ledger, recall, digest, conversation,
-profile, embeddings, slice_builder, views, tools, archive) have been deleted
-as part of the REVAMP.md migration. This module keeps the daemon runnable by
-exposing every historical memory endpoint as a 503 stub that points callers
-at REVAMP.md. The real endpoints come back online in Phases 1-10.
+Phase 2 (Task 2.4) reactivates this router. The Phase 0 stub handlers are
+gone — the endpoints listed below return real data. Everything else on the
+legacy surface (/memory/recall, /memory/commit_session_writes, etc.) is
+still absent; Phases 3-10 will add those as their corresponding modules
+land.
 
-See ``REVAMP.md`` and ``IRIS Memory Restructure.md`` for the rebuild plan.
+Endpoints (all mounted under ``/api`` by ``daemon.app``)::
+
+    GET  /memory/events                   List events (project-scoped, filterable)
+    GET  /memory/events/{event_id}        Fetch one event
+    POST /memory/events/verify_chain      Verify hash-chain integrity
+    POST /memory/sessions/start           Open a memory-layer session
+    POST /memory/sessions/{sid}/end       Close a session + stamp summary
+    GET  /memory/sessions/{sid}           Fetch a session row
+
+All routes resolve the **active** project via
+:func:`iris.projects.resolve_active_project`. There is no ``?project=``
+override for now — the daemon is single-tenant by design (spec §6 + the
+active-project contract). Callers that need to operate on a different
+project must flip the active pointer first via ``POST /api/projects/active``.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
+import json
+import sqlite3
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
+
+from iris.projects import db as _db
+from iris.projects import events as _events
+from iris.projects import resolve_active_project
+from iris.projects import sessions as _sessions
 
 router = APIRouter(tags=["memory"])
 
-_STUB_MESSAGE = "memory layer rebuilding — see REVAMP.md"
-_STUB_BODY = {"error": _STUB_MESSAGE}
 
-
-def _stub() -> JSONResponse:
-    return JSONResponse(status_code=503, content=_STUB_BODY)
-
-
-# -- retrieval --------------------------------------------------------------
-
-
-@router.post("/memory/recall")
-async def recall() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/get")
-async def memory_get() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/read_conversation")
-async def read_conversation() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/append_turn")
-async def append_turn() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/read_ledger")
-async def read_ledger() -> JSONResponse:
-    return _stub()
-
-
-# -- proposals --------------------------------------------------------------
-
-
-@router.post("/memory/propose_decision")
-async def propose_decision() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/propose_goal")
-async def propose_goal() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/propose_fact")
-async def propose_fact() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/propose_declined")
-async def propose_declined() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/propose_profile_annotation")
-async def propose_profile_annotation() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/propose_digest_edit")
-async def propose_digest_edit() -> JSONResponse:
-    return _stub()
-
-
-# -- commit -----------------------------------------------------------------
-
-
-@router.post("/memory/commit_session_writes")
-async def commit_session_writes() -> JSONResponse:
-    return _stub()
-
-
-# -- draft digest inspection ------------------------------------------------
-
-
-@router.get("/memory/draft_digest")
-async def get_draft_digest() -> JSONResponse:
-    return _stub()
-
-
-@router.get("/memory/pending")
-async def list_pending() -> JSONResponse:
-    return _stub()
-
-
-# -- pinned slice (system-prompt assembly) ----------------------------------
-
-
-@router.post("/memory/build_slice")
-async def build_slice() -> JSONResponse:
-    return _stub()
-
-
-# -- archive / views regeneration -------------------------------------------
-
-
-@router.post("/memory/rollover")
-async def rollover() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/regenerate_views")
-async def regenerate_views() -> JSONResponse:
-    return _stub()
-
-
-# -- inspector (L3 listing + mutation) --------------------------------------
-
-
-@router.get("/memory/list_knowledge")
-async def list_knowledge() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/set_status")
-async def set_status() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/delete_row")
-async def delete_row() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/supersede_fact")
-async def supersede_fact() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/discard_pending")
-async def discard_pending() -> JSONResponse:
-    return _stub()
-
-
-# -- digest listing ---------------------------------------------------------
-
-
-@router.get("/memory/list_digests")
-async def list_digests() -> JSONResponse:
-    return _stub()
-
-
-@router.post("/memory/replace_draft")
-async def replace_draft() -> JSONResponse:
-    return _stub()
-
-
-# -- profile ----------------------------------------------------------------
-
-
-@router.post("/memory/profile_data")
-async def profile_data() -> JSONResponse:
-    return _stub()
+# -- helpers ----------------------------------------------------------------
+
+
+def _active_project() -> Path:
+    """Return the active project path or raise ``HTTPException(400)``."""
+    path = resolve_active_project()
+    if path is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No active project; POST /api/projects/active first.",
+        )
+    return path
+
+
+def _project_id_for(path: Path) -> str:
+    """Derive the stable ``project_id`` for a project on disk.
+
+    V1 uses the project's directory name as its ``project_id``. This keeps
+    the identifier deterministic (restarting the daemon gets the same id)
+    without needing to persist a separate UUID in ``config.toml``.
+    """
+    return path.name
+
+
+def _ensure_project_row(conn: sqlite3.Connection, project_id: str, name: str) -> None:
+    """Upsert a row in ``projects`` so FK constraints are satisfied.
+
+    ``iris.projects.create_project`` initialises the schema but does **not**
+    insert a projects row — nothing in Phase 1 required it. The first time a
+    memory-layer write happens we backfill that row here. Idempotent via
+    ``INSERT OR IGNORE``; ``updated_at`` is refreshed on every call so
+    ``SELECT name, updated_at FROM projects`` reflects recent activity.
+    """
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn.execute(
+        "INSERT OR IGNORE INTO projects (project_id, name, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?)",
+        (project_id, name, now, now),
+    )
+    conn.execute(
+        "UPDATE projects SET updated_at = ? WHERE project_id = ?",
+        (now, project_id),
+    )
+
+
+def _open() -> tuple[sqlite3.Connection, str]:
+    """Open the active project's DB and return ``(conn, project_id)``.
+
+    The connection is caller-closed; every route handler wraps this in a
+    try/finally to close. Raises ``HTTPException(400)`` when no project is
+    active and ``HTTPException(500)`` if schema init fails.
+    """
+    path = _active_project()
+    conn = _db.connect(path)
+    try:
+        _db.init_schema(conn)
+        project_id = _project_id_for(path)
+        _ensure_project_row(conn, project_id, path.name)
+    except Exception:
+        conn.close()
+        raise
+    return conn, project_id
+
+
+def _row_to_event_dict(row: sqlite3.Row) -> dict[str, Any]:
+    """Shape an ``events`` row for the HTTP response.
+
+    ``payload_json`` is decoded back into a dict so callers don't have to
+    parse strings. If the row was written through :func:`events.append_event`
+    this is guaranteed to be valid JSON; a ``JSONDecodeError`` here means
+    the DB was tampered with outside the public API and the route returns
+    the raw string as a fallback under a ``payload_raw`` key.
+    """
+    payload_raw = row["payload_json"]
+    try:
+        payload: Any = json.loads(payload_raw)
+        return {
+            "event_id": row["event_id"],
+            "project_id": row["project_id"],
+            "session_id": row["session_id"],
+            "ts": row["ts"],
+            "type": row["type"],
+            "payload": payload,
+            "prev_event_hash": row["prev_event_hash"],
+            "event_hash": row["event_hash"],
+        }
+    except json.JSONDecodeError:
+        return {
+            "event_id": row["event_id"],
+            "project_id": row["project_id"],
+            "session_id": row["session_id"],
+            "ts": row["ts"],
+            "type": row["type"],
+            "payload_raw": payload_raw,
+            "prev_event_hash": row["prev_event_hash"],
+            "event_hash": row["event_hash"],
+        }
+
+
+# -- request bodies ---------------------------------------------------------
+
+
+class StartSessionRequest(BaseModel):
+    model_provider: str = Field(min_length=1)
+    model_name: str = Field(min_length=1)
+    system_prompt: str
+
+
+class EndSessionRequest(BaseModel):
+    summary: str
+
+
+# -- events -----------------------------------------------------------------
+
+
+@router.get("/memory/events")
+async def list_events(
+    type: str | None = Query(default=None),
+    since: str | None = Query(default=None, description="ISO-8601 lower bound on ts (inclusive)"),
+    until: str | None = Query(default=None, description="ISO-8601 upper bound on ts (exclusive)"),
+    session_id: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=10_000),
+) -> dict[str, Any]:
+    """List events for the active project with optional filters."""
+    conn, project_id = _open()
+    try:
+        if type is not None and type not in _events.EVENT_TYPES:
+            raise HTTPException(status_code=400, detail=f"unknown event type {type!r}")
+
+        clauses = ["project_id = ?"]
+        params: list[Any] = [project_id]
+        if type is not None:
+            clauses.append("type = ?")
+            params.append(type)
+        if since is not None:
+            clauses.append("ts >= ?")
+            params.append(since)
+        if until is not None:
+            clauses.append("ts < ?")
+            params.append(until)
+        if session_id is not None:
+            clauses.append("session_id = ?")
+            params.append(session_id)
+
+        sql = (
+            "SELECT event_id, project_id, session_id, ts, type, payload_json, "
+            "prev_event_hash, event_hash FROM events WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY rowid DESC LIMIT ?"
+        )
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+        return {"data": [_row_to_event_dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/events/{event_id}")
+async def get_event(event_id: str) -> dict[str, Any]:
+    """Fetch a single event by id (project-scoped)."""
+    conn, project_id = _open()
+    try:
+        row = conn.execute(
+            "SELECT event_id, project_id, session_id, ts, type, payload_json, "
+            "prev_event_hash, event_hash FROM events "
+            "WHERE event_id = ? AND project_id = ?",
+            (event_id, project_id),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"event {event_id!r} not found")
+        return {"data": _row_to_event_dict(row)}
+    finally:
+        conn.close()
+
+
+@router.post("/memory/events/verify_chain")
+async def verify_chain() -> dict[str, Any]:
+    """Re-walk the hash chain for the active project; return integrity report."""
+    conn, project_id = _open()
+    try:
+        result = _events.verify_chain(conn, project_id)
+        return {
+            "data": {
+                "valid": result["valid"],
+                "first_break": result["first_break"],
+                "checked": result["checked"],
+            }
+        }
+    finally:
+        conn.close()
+
+
+# -- sessions ---------------------------------------------------------------
+
+
+@router.post("/memory/sessions/start")
+async def start_session(req: StartSessionRequest) -> dict[str, Any]:
+    """Open a new memory-layer session. Returns the new ``session_id``."""
+    conn, project_id = _open()
+    try:
+        session_id = _sessions.start_session(
+            conn,
+            project_id=project_id,
+            model_provider=req.model_provider,
+            model_name=req.model_name,
+            system_prompt=req.system_prompt,
+        )
+        return {"data": _sessions.get_session(conn, session_id)}
+    except sqlite3.IntegrityError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    finally:
+        conn.close()
+
+
+@router.post("/memory/sessions/{session_id}/end")
+async def end_session(session_id: str, req: EndSessionRequest) -> dict[str, Any]:
+    """Stamp ``ended_at`` + ``summary`` on a session and log ``session_ended``."""
+    conn, _project_id = _open()
+    try:
+        try:
+            _sessions.end_session(conn, session_id=session_id, summary=req.summary)
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return {"data": _sessions.get_session(conn, session_id)}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/sessions/{session_id}")
+async def get_session(session_id: str) -> dict[str, Any]:
+    """Fetch a session row."""
+    conn, _project_id = _open()
+    try:
+        try:
+            return {"data": _sessions.get_session(conn, session_id)}
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+    finally:
+        conn.close()
