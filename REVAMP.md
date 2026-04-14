@@ -276,7 +276,7 @@ Goal: stand up `iris.sqlite` per spec §7, scaffold every CLAUDE.md the implemen
 
 ---
 
-### [ ] Task 1.2 — Transcribe target schema to schema.sql
+### [x] Task 1.2 — Transcribe target schema to schema.sql
 
 **Phase**: 1 · **Effort**: M · **Blocks**: 1.3, 2.1, all later DB tasks
 
