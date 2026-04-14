@@ -1312,7 +1312,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ## Phase 13 — V2: Reflection Cycles
 
-### [ ] Task 13.1 — reflection.py
+### [x] Task 13.1 — reflection.py
 
 **Phase**: 13 · **Effort**: L · **Blocks**: 13.2
 
