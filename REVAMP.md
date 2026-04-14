@@ -546,7 +546,7 @@ Goal: every chat message and tool invocation persists to SQLite with FTS5 search
 
 ---
 
-### [ ] Task 3.2 — tool_calls.py
+### [x] Task 3.2 — tool_calls.py
 
 **Phase**: 3 · **Effort**: M · **Blocks**: 3.3, 3.6
 
