@@ -434,7 +434,7 @@ Skip — folded into 1.5 and 1.6.
 
 Goal: every state change downstream of this phase writes an event row. Hash chain provides tamper evidence.
 
-### [ ] Task 2.1 — events.py
+### [x] Task 2.1 — events.py
 
 **Phase**: 2 · **Effort**: M · **Blocks**: 2.2, 2.3, all later memory writes
 
