@@ -58,7 +58,7 @@ def test_event_type_constants_match_enum() -> None:
     assert EVT_MESSAGE in EVENT_TYPES
     assert EVT_SESSION_STARTED in EVENT_TYPES
     assert EVT_MEMORY_WRITE in EVENT_TYPES
-    assert len(EVENT_TYPES) == 13
+    assert len(EVENT_TYPES) == 14
 
 
 def test_unknown_event_type_raises(project_conn: sqlite3.Connection) -> None:

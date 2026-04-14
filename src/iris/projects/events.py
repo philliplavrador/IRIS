@@ -45,6 +45,7 @@ __all__ = [
     "EVT_TOOL_CALL",
     "EVT_TOOL_RESULT",
     "EVT_DATASET_IMPORT",
+    "EVT_DATASET_PROFILED",
     "EVT_TRANSFORM_RUN",
     "EVT_ARTIFACT_CREATED",
     "EVT_MEMORY_WRITE",
@@ -62,6 +63,7 @@ EVT_MESSAGE: Final[str] = "message"
 EVT_TOOL_CALL: Final[str] = "tool_call"
 EVT_TOOL_RESULT: Final[str] = "tool_result"
 EVT_DATASET_IMPORT: Final[str] = "dataset_import"
+EVT_DATASET_PROFILED: Final[str] = "dataset_profiled"
 EVT_TRANSFORM_RUN: Final[str] = "transform_run"
 EVT_ARTIFACT_CREATED: Final[str] = "artifact_created"
 EVT_MEMORY_WRITE: Final[str] = "memory_write"
@@ -78,6 +80,7 @@ EVENT_TYPES: Final[frozenset[str]] = frozenset(
         EVT_TOOL_CALL,
         EVT_TOOL_RESULT,
         EVT_DATASET_IMPORT,
+        EVT_DATASET_PROFILED,
         EVT_TRANSFORM_RUN,
         EVT_ARTIFACT_CREATED,
         EVT_MEMORY_WRITE,

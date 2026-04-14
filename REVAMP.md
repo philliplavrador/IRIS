@@ -851,7 +851,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 ---
 
-### [ ] Task 6.3 — profile.py rebuilt
+### [x] Task 6.3 — profile.py rebuilt
 
 **Phase**: 6 · **Effort**: L · **Blocks**: 6.4
 
