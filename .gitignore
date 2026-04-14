@@ -79,6 +79,7 @@ node_modules/
 # Local reference material (not for distribution)
 spikelab reference/
 spikelab-reference/
+SpikeLab-main/
 .playwright-mcp/
 settings-general-tab.png
 
