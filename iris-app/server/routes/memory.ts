@@ -138,6 +138,55 @@ export function registerMemoryRoutes(app: Express): void {
     },
   )
 
+  // -- runs ------------------------------------------------------------
+  app.post('/api/memory/runs/start', async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost('/api/memory/runs/start', req.body ?? {}))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.post('/api/memory/runs/:runId/complete', async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.runId)
+      res.json(
+        await daemonPost(`/api/memory/runs/${encodeURIComponent(id)}/complete`, req.body ?? {}),
+      )
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.post('/api/memory/runs/:runId/fail', async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.runId)
+      res.json(
+        await daemonPost(`/api/memory/runs/${encodeURIComponent(id)}/fail`, req.body ?? {}),
+      )
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.get('/api/memory/runs', async (req: Request, res: Response) => {
+    try {
+      const qs = new URLSearchParams(req.query as Record<string, string>).toString()
+      res.json(await daemonGet(`/api/memory/runs${qs ? `?${qs}` : ''}`))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.get('/api/memory/runs/:runId/lineage', async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.runId)
+      res.json(await daemonGet(`/api/memory/runs/${encodeURIComponent(id)}/lineage`))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
   // -- memory entries --------------------------------------------------
   app.post('/api/memory/entries', async (req: Request, res: Response) => {
     try {
@@ -216,6 +265,63 @@ export function registerMemoryRoutes(app: Express): void {
   app.post('/api/memory/extract', async (req: Request, res: Response) => {
     try {
       res.json(await daemonPost('/api/memory/extract', req.body ?? {}))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  // -- artifacts -------------------------------------------------------
+  app.post('/api/memory/artifacts', async (req: Request, res: Response) => {
+    try {
+      res.json(await daemonPost('/api/memory/artifacts', req.body ?? {}))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.get('/api/memory/artifacts', async (req: Request, res: Response) => {
+    try {
+      const qs = new URLSearchParams(req.query as Record<string, string>).toString()
+      res.json(await daemonGet(`/api/memory/artifacts${qs ? `?${qs}` : ''}`))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.get('/api/memory/artifacts/:artifactId', async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.artifactId)
+      res.json(await daemonGet(`/api/memory/artifacts/${encodeURIComponent(id)}`))
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.get('/api/memory/artifacts/:artifactId/bytes', async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.artifactId)
+      const daemonUrl = process.env.IRIS_DAEMON_URL || 'http://localhost:4002'
+      const upstream = await fetch(
+        `${daemonUrl}/api/memory/artifacts/${encodeURIComponent(id)}/bytes`,
+      )
+      if (!upstream.ok) {
+        const text = await upstream.text()
+        res.status(upstream.status === 404 ? 404 : 502).json({ error: text })
+        return
+      }
+      const contentType = upstream.headers.get('content-type')
+      if (contentType) res.setHeader('Content-Type', contentType)
+      const buf = Buffer.from(await upstream.arrayBuffer())
+      res.send(buf)
+    } catch (e) {
+      forwardError(res, e)
+    }
+  })
+
+  app.delete('/api/memory/artifacts/:artifactId', async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.artifactId)
+      res.json(await daemonDelete(`/api/memory/artifacts/${encodeURIComponent(id)}`))
     } catch (e) {
       forwardError(res, e)
     }

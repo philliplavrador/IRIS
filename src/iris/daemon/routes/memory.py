@@ -19,6 +19,11 @@ Endpoints (all mounted under ``/api`` by ``daemon.app``)::
     GET  /memory/messages/search          FTS5 BM25 search across a project
     POST /memory/tool_calls               Append one tool-call row
     PATCH /memory/tool_calls/{id}/output_artifact  Attach artifact id to a tool-call
+    POST /memory/runs/start               Start a run (status='running')
+    POST /memory/runs/{id}/complete       Mark a run completed
+    POST /memory/runs/{id}/fail           Mark a run failed
+    GET  /memory/runs                     List runs for the active project
+    GET  /memory/runs/{id}/lineage        Ancestor + descendant runs
     POST /memory/entries                  Propose a draft memory
     POST /memory/entries/commit           Flip drafts to active
     POST /memory/entries/discard          Hard-delete drafts
@@ -38,21 +43,25 @@ project must flip the active pointer first via ``POST /api/projects/active``.
 
 from __future__ import annotations
 
+import base64 as _base64
 import json
+import mimetypes as _mimetypes
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
+from iris.projects import artifacts as _artifacts
 from iris.projects import db as _db
 from iris.projects import events as _events
 from iris.projects import markdown_sync as _markdown_sync
 from iris.projects import memory_entries as _memory_entries
 from iris.projects import messages as _messages
 from iris.projects import resolve_active_project
+from iris.projects import runs as _runs
 from iris.projects import sessions as _sessions
 from iris.projects import tool_calls as _tool_calls
 
@@ -195,6 +204,31 @@ class AttachArtifactRequest(BaseModel):
     artifact_id: str = Field(min_length=1)
 
 
+class StartRunRequest(BaseModel):
+    session_id: str = Field(min_length=1)
+    operation_type: str = Field(min_length=1)
+    operation_id: str | None = None
+    parent_run_id: str | None = None
+    input_versions: list[str] | None = None
+    input_data_hash: str | None = None
+    parameters: dict[str, Any] | None = None
+    code: str | None = None
+    llm_model: str | None = None
+    llm_prompt_hash: str | None = None
+
+
+class CompleteRunRequest(BaseModel):
+    output_data_hash: str | None = None
+    output_artifact_ids: list[str] | None = None
+    findings_text: str | None = None
+    execution_time_ms: int | None = None
+
+
+class FailRunRequest(BaseModel):
+    error_text: str = Field(min_length=1)
+    failure_reflection: str | None = None
+
+
 class ProposeMemoryRequest(BaseModel):
     scope: str = Field(min_length=1)
     memory_type: str = Field(min_length=1)
@@ -225,6 +259,13 @@ class SupersedeRequest(BaseModel):
 
 class ExtractRequest(BaseModel):
     session_id: str = Field(min_length=1)
+
+
+class StoreArtifactRequest(BaseModel):
+    content_b64: str = Field(min_length=1)
+    type: str = Field(min_length=1)
+    metadata: dict[str, Any] | None = None
+    description: str | None = None
 
 
 # -- events -----------------------------------------------------------------
@@ -463,6 +504,114 @@ async def attach_tool_call_artifact(
         conn.close()
 
 
+# -- runs -------------------------------------------------------------------
+
+
+@router.post("/memory/runs/start")
+async def start_run(req: StartRunRequest) -> dict[str, Any]:
+    """Start a run row (``status='running'``) and emit ``transform_run`` start."""
+    conn, project_id = _open()
+    try:
+        try:
+            run_id = _runs.start_run(
+                conn,
+                project_id=project_id,
+                session_id=req.session_id,
+                operation_type=req.operation_type,
+                operation_id=req.operation_id,
+                parent_run_id=req.parent_run_id,
+                input_versions=req.input_versions,
+                input_data_hash=req.input_data_hash,
+                parameters=req.parameters,
+                code=req.code,
+                llm_model=req.llm_model,
+                llm_prompt_hash=req.llm_prompt_hash,
+            )
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": {"run_id": run_id}}
+    finally:
+        conn.close()
+
+
+@router.post("/memory/runs/{run_id}/complete")
+async def complete_run(run_id: str, req: CompleteRunRequest) -> dict[str, Any]:
+    """Mark a run completed and emit ``transform_run`` complete event."""
+    conn, _ = _open()
+    try:
+        try:
+            _runs.complete_run(
+                conn,
+                run_id,
+                output_data_hash=req.output_data_hash,
+                output_artifact_ids=req.output_artifact_ids,
+                findings_text=req.findings_text,
+                execution_time_ms=req.execution_time_ms,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return {"data": {"run_id": run_id}}
+    finally:
+        conn.close()
+
+
+@router.post("/memory/runs/{run_id}/fail")
+async def fail_run(run_id: str, req: FailRunRequest) -> dict[str, Any]:
+    """Mark a run failed with ``error_text`` and optional reflection."""
+    conn, _ = _open()
+    try:
+        try:
+            _runs.fail_run(
+                conn,
+                run_id,
+                error_text=req.error_text,
+                failure_reflection=req.failure_reflection,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return {"data": {"run_id": run_id}}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/runs")
+async def list_runs(
+    session_id: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    operation_type: str | None = Query(default=None),
+    since: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=10_000),
+) -> dict[str, Any]:
+    """List runs for the active project with optional filters (newest-first)."""
+    conn, project_id = _open()
+    try:
+        try:
+            rows = _runs.list_runs(
+                conn,
+                project_id=project_id,
+                session_id=session_id,
+                status=status,
+                operation_type=operation_type,
+                since=since,
+                limit=limit,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": rows}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/runs/{run_id}/lineage")
+async def get_run_lineage(run_id: str) -> dict[str, Any]:
+    """Return ancestor + descendant runs (oldest-first in each list)."""
+    conn, _ = _open()
+    try:
+        return {"data": _runs.query_lineage(conn, run_id)}
+    finally:
+        conn.close()
+
+
 # -- memory entries ---------------------------------------------------------
 
 
@@ -691,5 +840,139 @@ async def extract_memory(req: ExtractRequest) -> dict[str, Any]:
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         return {"data": {"ids": list(ids)}}
+    finally:
+        conn.close()
+
+
+# -- artifacts --------------------------------------------------------------
+
+
+_ARTIFACT_MEDIA_TYPES: dict[str, str] = {
+    "plot_png": "image/png",
+    "plot_svg": "image/svg+xml",
+    "report_html": "text/html",
+    "report_pdf": "application/pdf",
+    "slide_deck": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "code_file": "text/plain",
+    "cache_object": "application/octet-stream",
+    "data_export": "application/octet-stream",
+    "notebook": "application/x-ipynb+json",
+}
+
+
+def _media_type_for(artifact_type: str, metadata: dict[str, Any] | None) -> str:
+    """Pick a ``Content-Type`` for an artifact byte response.
+
+    Prefers an explicit ``metadata.content_type`` if the caller supplied
+    one, then falls back to a per-type default. For generic ``code_file``
+    rows we additionally sniff ``metadata.filename`` via :mod:`mimetypes`
+    so a ``.py`` or ``.json`` file gets a useful type.
+    """
+    if metadata:
+        ct = metadata.get("content_type")
+        if isinstance(ct, str) and ct:
+            return ct
+        filename = metadata.get("filename")
+        if isinstance(filename, str) and filename:
+            guessed, _ = _mimetypes.guess_type(filename)
+            if guessed:
+                return guessed
+    return _ARTIFACT_MEDIA_TYPES.get(artifact_type, "application/octet-stream")
+
+
+@router.post("/memory/artifacts")
+async def store_artifact(req: StoreArtifactRequest) -> dict[str, Any]:
+    """Content-address a new artifact. Body carries base64-encoded bytes."""
+    path = _active_project()
+    try:
+        content = _base64.b64decode(req.content_b64, validate=True)
+    except (ValueError, _base64.binascii.Error) as e:  # type: ignore[attr-defined]
+        raise HTTPException(status_code=400, detail=f"invalid base64: {e}") from e
+
+    conn = _db.connect(path)
+    try:
+        _db.init_schema(conn)
+        project_id = _project_id_for(path)
+        _ensure_project_row(conn, project_id, path.name)
+        try:
+            artifact_id = _artifacts.store(
+                conn,
+                path,
+                content=content,
+                type=req.type,
+                metadata=req.metadata,
+                description=req.description,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": {"artifact_id": artifact_id}}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/artifacts")
+async def list_artifacts(
+    type: str | None = Query(default=None),
+    run_id: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=10_000),
+) -> dict[str, Any]:
+    """List artifacts for the active project (filtered by type/run)."""
+    conn, project_id = _open()
+    try:
+        rows = _artifacts.list_artifacts(
+            conn,
+            project_id=project_id,
+            type=type,
+            run_id=run_id,
+        )
+        return {"data": rows[:limit]}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/artifacts/{artifact_id}")
+async def get_artifact_metadata(artifact_id: str) -> dict[str, Any]:
+    """Return the metadata row for one artifact."""
+    conn, _ = _open()
+    try:
+        try:
+            return {"data": _artifacts.get_metadata(conn, artifact_id)}
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+    finally:
+        conn.close()
+
+
+@router.get("/memory/artifacts/{artifact_id}/bytes")
+async def get_artifact_bytes(artifact_id: str) -> Response:
+    """Stream raw bytes for ``artifact_id`` with an inferred media type."""
+    path = _active_project()
+    conn = _db.connect(path)
+    try:
+        _db.init_schema(conn)
+        try:
+            meta = _artifacts.get_metadata(conn, artifact_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        try:
+            content = _artifacts.get_bytes(conn, path, artifact_id)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=410, detail=str(e)) from e
+        media_type = _media_type_for(meta["type"], meta.get("metadata"))
+        return Response(content=content, media_type=media_type)
+    finally:
+        conn.close()
+
+
+@router.delete("/memory/artifacts/{artifact_id}")
+async def delete_artifact(artifact_id: str) -> dict[str, Any]:
+    """Soft-delete an artifact (blob is preserved per retention policy)."""
+    conn, _ = _open()
+    try:
+        try:
+            _artifacts.soft_delete(conn, artifact_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return {"data": {"artifact_id": artifact_id}}
     finally:
         conn.close()

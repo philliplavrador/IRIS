@@ -939,7 +939,7 @@ Each call writes corresponding events (`transform_run` for start/complete).
 
 ---
 
-### [ ] Task 7.3 — Daemon /memory/runs
+### [x] Task 7.3 — Daemon /memory/runs
 
 **Phase**: 7 · **Effort**: S · **Blocks**: 7.4
 
@@ -1002,7 +1002,7 @@ Goal: catalog every hardcoded op (the existing 17) into the `operations` table. 
 
 ---
 
-### [ ] Task 8.2 — Catalog hardcoded ops at daemon startup
+### [x] Task 8.2 — Catalog hardcoded ops at daemon startup
 
 **Phase**: 8 · **Effort**: M · **Blocks**: 8.3
 
