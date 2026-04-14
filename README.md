@@ -8,6 +8,14 @@
 
 ---
 
+> **Status (2026-04): memory-layer rewrite in progress.** Phases 0–1 of
+> [`REVAMP.md`](REVAMP.md) are complete (SQLite schema + project lifecycle on
+> the new workspace layout); Phase 2 (event log + session wiring) is active.
+> The engine, DSL, ops, and webapp shell are stable. Design spec:
+> [`IRIS Memory Restructure.md`](IRIS%20Memory%20Restructure.md).
+
+---
+
 ## Why IRIS
 
 Most AI chat tools describe analyses. IRIS **runs** them. It pairs a local React webapp with a Python signal-processing engine and the Claude Code SDK so the model operates on your real data — filtering, detecting, plotting, writing reports — inside a project workspace that persists decisions and data profiles across sessions. Everything stays on your machine.
@@ -78,38 +86,33 @@ Deeper dive: [`docs/architecture.md`](docs/architecture.md).
 ## Architecture
 
 ```
-iris-app/                React 19 + Express webapp
-  server/                  Express + Claude Code SDK bridge + WebSocket
-    routes/                REST endpoints (agent, projects)
-    services/              Daemon client, file watchers
-  src/renderer/            Vite + Tailwind 4 + Zustand + Radix UI
-    pages/                 ProjectsPage, WorkspacePage
-    components/            Chat, PlotViewer, ReportViewer, FileManager
+iris-app/            React 19 + Express webapp
+  server/              Express + Claude Code SDK bridge + WebSocket
+  src/renderer/        Vite + Tailwind 4 + Zustand + Radix UI
 
-src/iris/                Python package
-  engine/                  DSL parser, AST executor, op registry, two-tier cache
-    ops/                   17 operations (filtering, detection, spectral, …)
-  daemon/                  FastAPI backend — runs ops, profiles data
-  config.py                YAML config loader + validator
-  projects.py              Project lifecycle, history, references, dedup cache
-  sessions.py              Session directories + provenance sidecars
-  cli.py                   `iris` CLI
+src/iris/            Python package
+  engine/              DSL parser, AST executor, op registry, two-tier cache
+    ops/               17 operations (filtering, detection, spectral, …)
+  daemon/              FastAPI backend (:4002) — ops, profiles, memory HTTP
+    routes/            config, memory, ops, pipeline, projects, sessions
+  projects/            Project workspaces + memory layer (SQLite + markdown)
+  cli.py               `iris` CLI
 
-configs/                 Global YAML configs
-projects/                Per-project workspaces (gitignored except TEMPLATE)
-tests/                   Pytest suite (synthetic data, headless)
-docs/                    Architecture, operations math, project contract
+configs/             Single config.toml (replaces legacy YAML quartet)
+projects/            Per-project workspaces (gitignored except TEMPLATE)
+tests/               Pytest suite (synthetic data, headless)
+docs/                Architecture, operations math, project contract
 ```
 
 ---
 
 ## Projects
 
-A **project** is a self-contained workspace under `projects/<name>/` with its own data, conversations, memory, config overrides, plots, and reports.
+A **project** is a self-contained workspace under `projects/<name>/` with its own `config.toml`, a runtime `iris.sqlite` (programmatic truth for events, messages, memory entries, runs, and artifacts), human-readable `memory/*.md` files regenerated from SQLite, and `datasets/`, `artifacts/`, `ops/`, `indexes/` directories.
 
-- **Persistent** — the agent reads `memory.yaml` on every message, so it remembers goals, decisions, and data profiles without you repeating yourself.
-- **Isolated** — switching projects switches context entirely. Each has its own cache and config overrides.
-- **Conversational** — chat history persists as JSONL in `conversations/`; resume or branch at any time.
+- **Three substrates** — SQLite for programmatic truth, content-addressed filesystem for artifacts and datasets, curated Markdown for the human view.
+- **Persistent** — findings, decisions, caveats, and data profiles survive across sessions without you repeating yourself.
+- **Isolated** — switching projects switches context entirely. Each has its own database, cache, and config overrides.
 
 Full contract: [`docs/projects.md`](docs/projects.md).
 
@@ -132,7 +135,7 @@ Full contract: [`docs/projects.md`](docs/projects.md).
   - Full math reference: [`docs/operations.md`](docs/operations.md).
 - **Config-driven DSL** — chains like `mea_trace(861).notch_filter.butter_bandpass.sliding_rms` parsed into a typed AST, executed with prefix caching.
 - **Two-tier cache** — in-memory reuse within a run + on-disk persistence across runs. Keys include DSL chain, parameters, window, and input file mtimes.
-- **Per-project overrides** — override any global setting via `projects/<name>/claude_config.yaml`. See [`configs/CLAUDE.md`](configs/CLAUDE.md).
+- **Per-project overrides** — override any global setting via `projects/<name>/config.toml`. See [`configs/CLAUDE.md`](configs/CLAUDE.md).
 
 **Extensibility**
 - Custom per-project ops can be added through the chat interface when built-ins fall short.
@@ -156,10 +159,11 @@ iris run "mea_trace(861).butter_bandpass.spectrogram"
 
 | Document | What it covers |
 |---|---|
+| [`REVAMP.md`](REVAMP.md) | Ordered task ledger for the in-progress memory-system rewrite |
+| [`IRIS Memory Restructure.md`](IRIS%20Memory%20Restructure.md) | Design spec for the new memory layer |
 | [`docs/architecture.md`](docs/architecture.md) | DSL, AST, executor, cache, type system, bank vectorization |
 | [`docs/operations.md`](docs/operations.md) | Math reference for all 17 ops |
 | [`docs/projects.md`](docs/projects.md) | Project workspace contract |
-| [`docs/agent-guide.md`](docs/agent-guide.md) | Agent workflow reference |
 | [`docs/data-format.md`](docs/data-format.md) | Expected MEA `.h5`, calcium `.npz`, and RT-Sort model layouts |
 | [`docs/sessions.md`](docs/sessions.md) | Session directory layout + sidecar JSON schema |
 | [`docs/development.md`](docs/development.md) | Contributor setup, running tests, project conventions |

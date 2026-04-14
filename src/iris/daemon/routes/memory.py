@@ -258,7 +258,7 @@ async def start_session(req: StartSessionRequest) -> dict[str, Any]:
 @router.post("/memory/sessions/{session_id}/end")
 async def end_session(session_id: str, req: EndSessionRequest) -> dict[str, Any]:
     """Stamp ``ended_at`` + ``summary`` on a session and log ``session_ended``."""
-    conn, _project_id = _open()
+    conn, _ = _open()
     try:
         try:
             _sessions.end_session(conn, session_id=session_id, summary=req.summary)
@@ -272,7 +272,7 @@ async def end_session(session_id: str, req: EndSessionRequest) -> dict[str, Any]
 @router.get("/memory/sessions/{session_id}")
 async def get_session(session_id: str) -> dict[str, Any]:
     """Fetch a session row."""
-    conn, _project_id = _open()
+    conn, _ = _open()
     try:
         try:
             return {"data": _sessions.get_session(conn, session_id)}

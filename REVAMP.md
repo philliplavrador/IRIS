@@ -508,7 +508,7 @@ Goal: every state change downstream of this phase writes an event row. Hash chai
 
 ---
 
-### [ ] Task 2.5 — agent-bridge.ts: session lifecycle wiring
+### [x] Task 2.5 — agent-bridge.ts: session lifecycle wiring
 
 **Phase**: 2 · **Effort**: M · **Blocks**: Phase 3
 

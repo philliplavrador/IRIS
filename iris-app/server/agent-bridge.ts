@@ -44,6 +44,108 @@ let abortController: AbortController | null = null
 // Per-project session tracking: each project gets its own persistent session
 const projectSessions = new Map<string, string>()
 
+// Per-project memory-layer session tracking (REVAMP Task 2.5). Distinct from
+// the Claude Code SDK session above: this id is the `sessions.session_id`
+// row created by POST /api/memory/sessions/start and is what every later
+// memory write (messages, tool_calls, memory_entries, runs) carries so queries
+// can scope to one conversation. Naming follows server/CLAUDE.md §3 —
+// { sdkSessionId, memorySessionId } pair.
+const projectMemorySessions = new Map<string, string>()
+
+const CLAUDE_MODEL_PROVIDER = 'anthropic'
+// The Claude Code SDK selects the model based on the user's Max subscription;
+// we don't have a reliable "which model answered" signal in the stream yet,
+// so we stamp the configured default here. When the SDK surfaces the model
+// in its init message we can replace this with the reported id.
+const CLAUDE_MODEL_NAME = process.env.IRIS_CLAUDE_MODEL ?? 'claude-sonnet-4-5'
+
+/**
+ * Ensure the daemon's active-project pointer matches `projectName`. The
+ * memory-session endpoints resolve the active project server-side, so we
+ * must flip it before starting/ending a session. Failures are logged and
+ * swallowed — memory-session lifecycle is best-effort and must never block
+ * the chat stream.
+ */
+async function ensureActiveProject(projectName: string): Promise<void> {
+  try {
+    await daemonPost('/api/projects/active', { name: projectName })
+  } catch (err: any) {
+    console.error('[agent-bridge] activate project failed:', err?.message ?? err)
+  }
+}
+
+/**
+ * Start a memory-layer session for `projectName` if one isn't already open.
+ * Writes the returned session_id into `projectMemorySessions` and returns it.
+ * Never throws — returns null on failure so the caller can continue without
+ * memory-session scoping.
+ */
+async function startMemorySession(
+  projectName: string,
+  systemPrompt: string,
+): Promise<string | null> {
+  const existing = projectMemorySessions.get(projectName)
+  if (existing) return existing
+  try {
+    await ensureActiveProject(projectName)
+    const resp = await daemonPost<{ data: { session_id: string } }>(
+      '/api/memory/sessions/start',
+      {
+        model_provider: CLAUDE_MODEL_PROVIDER,
+        model_name: CLAUDE_MODEL_NAME,
+        system_prompt: systemPrompt,
+      },
+    )
+    const sid = resp?.data?.session_id
+    if (sid) {
+      projectMemorySessions.set(projectName, sid)
+      return sid
+    }
+    return null
+  } catch (err: any) {
+    console.error('[agent-bridge] start memory session failed:', err?.message ?? err)
+    return null
+  }
+}
+
+/**
+ * Close the memory-layer session bound to `projectName`, if any. Called when
+ * the SDK reports a different session_id than the one we cached (treated as
+ * "new conversation") and from the exported `endMemorySession` hook so
+ * higher layers (e.g., the /api/agent/abort route, explicit "new chat"
+ * actions) can force a close.
+ */
+async function endMemorySessionInternal(
+  projectName: string,
+  summary: string,
+): Promise<void> {
+  const sid = projectMemorySessions.get(projectName)
+  if (!sid) return
+  projectMemorySessions.delete(projectName)
+  try {
+    await ensureActiveProject(projectName)
+    await daemonPost(
+      `/api/memory/sessions/${encodeURIComponent(sid)}/end`,
+      { summary },
+    )
+  } catch (err: any) {
+    console.error('[agent-bridge] end memory session failed:', err?.message ?? err)
+  }
+}
+
+/** Public hook: end the memory-layer session tied to `projectName`. */
+export async function endMemorySession(
+  projectName: string,
+  summary = 'conversation closed',
+): Promise<void> {
+  await endMemorySessionInternal(projectName, summary)
+}
+
+/** Test-only: read the currently-tracked memory session_id for a project. */
+export function getMemorySessionId(projectName: string): string | undefined {
+  return projectMemorySessions.get(projectName)
+}
+
 /**
  * L0 conversation logging — fire-and-forget append to the per-session JSONL.
  * §3.1: the one memory that must never be lost. Failures logged, never raised.
@@ -313,6 +415,21 @@ export async function sendMessage(prompt: string, broadcast: BroadcastFn, projec
       if (msg.type === 'system' && 'subtype' in msg && (msg as any).subtype === 'init') {
         const newSessionId = (msg as any).session_id ?? null
         if (newSessionId) {
+          // REVAMP Task 2.5: if the SDK reports a *different* session id than
+          // the one we had cached, the previous conversation is over. Close
+          // its memory-layer session before opening a new one so the events
+          // table records a clean session_started/session_ended pair.
+          if (
+            projectName &&
+            existingSessionId &&
+            existingSessionId !== newSessionId
+          ) {
+            // fire-and-forget; do not block the stream on the end call
+            endMemorySessionInternal(
+              projectName,
+              'SDK started a new session',
+            ).catch(() => {})
+          }
           projectSessions.set(sessionKey, newSessionId)
         }
         // SDK session_id only becomes known after the first init message,
@@ -321,6 +438,13 @@ export async function sendMessage(prompt: string, broadcast: BroadcastFn, projec
         if (projectName && !userTurnLogged && newSessionId) {
           logTurn(projectName, newSessionId, 'user', prompt)
           userTurnLogged = true
+        }
+        // REVAMP Task 2.5: open a memory-layer session on the first init of
+        // a conversation. Fire-and-forget so the stream never blocks on the
+        // daemon round trip. Subsequent messages in the same SDK session
+        // will find the cached id and skip the call.
+        if (projectName && systemPrompt) {
+          startMemorySession(projectName, systemPrompt).catch(() => {})
         }
       }
 

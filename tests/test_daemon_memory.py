@@ -31,6 +31,8 @@ def sandbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture
 def client(sandbox: Path) -> TestClient:
+    # `sandbox` is required for its chdir + TEMPLATE side effects, not its value.
+    _ = sandbox
     from iris.daemon.app import app
 
     return TestClient(app)
