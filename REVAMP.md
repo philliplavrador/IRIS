@@ -194,7 +194,7 @@ Goal: clear every file destined for deletion before any rewrite begins. Build wi
 
 ---
 
-### [ ] Task 0.7 — Collapse YAML configs into config.toml
+### [x] Task 0.7 — Collapse YAML configs into config.toml
 
 **Phase**: 0 · **Effort**: M · **Blocks**: 1.7, 1.10, all later config-touching tasks
 

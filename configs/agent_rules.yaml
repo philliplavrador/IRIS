@@ -1,9 +1,0 @@
-# Global behavior rules applied to every IRIS project.
-# Edit this file directly or use the IRIS webapp settings.
-
-rules: |
-  - Always use the specific data source the user requests. Never substitute a different dataset without asking.
-  - When the user asks for a plot or analysis of specific data, confirm you are using the correct file before proceeding.
-  - If the requested data source is ambiguous, ask for clarification rather than guessing.
-  - Follow the user's instructions precisely. Do not add unrequested extras or deviate from what was asked.
-  - When multiple data files exist in input_data/, list them and confirm which one to use if not obvious.

@@ -1,4 +1,5 @@
 """Shared pytest fixtures for the IRIS test suite."""
+
 from __future__ import annotations
 
 import sys
@@ -29,36 +30,33 @@ def tmp_configs_dir(tmp_path: Path) -> Path:
     cfg = tmp_path / "configs"
     cfg.mkdir()
 
-    (cfg / "paths.yaml").write_text(
+    (cfg / "config.toml").write_text(
         """
-mea_h5: nonexistent_mea.h5
-ca_traces_npz: nonexistent_ca.npz
-output_dir: outputs
-cache_dir: cache
-""".strip()
-    )
+[paths]
+mea_h5 = "nonexistent_mea.h5"
+ca_traces_npz = "nonexistent_ca.npz"
+output_dir = "outputs"
+cache_dir = "cache"
 
-    (cfg / "ops.yaml").write_text(
-        """
-butter_bandpass:
-  low_hz: 350
-  high_hz: 6000
-  order: 10
-  zero_phase: true
-notch_filter:
-  notch_freq_hz: 60.0
-  notch_q: 30.0
-  harmonics: [1, 2, 3]
-""".strip()
-    )
+[plot]
+backend = "matplotlib"
+show_ops_params = true
+save_plots = false
 
-    (cfg / "globals.yaml").write_text(
-        """
-plot_backend: matplotlib
-show_ops_params: true
-save_plots: false
-memory_cache: true
-disk_cache: false
+[engine]
+memory_cache = true
+disk_cache = false
+
+[ops.butter_bandpass]
+low_hz = 350
+high_hz = 6000
+order = 10
+zero_phase = true
+
+[ops.notch_filter]
+notch_freq_hz = 60.0
+notch_q = 30.0
+harmonics = [1, 2, 3]
 """.strip()
     )
 

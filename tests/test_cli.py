@@ -1,8 +1,8 @@
 """Smoke tests for the `iris` CLI."""
+
 from __future__ import annotations
 
 import io
-import sys
 from contextlib import redirect_stdout
 
 import pytest
@@ -47,15 +47,24 @@ def test_cli_config_validate_flags_missing_files(tmp_configs_dir):
 
 
 def test_cli_config_edit(tmp_configs_dir):
-    rc = main([
-        "--config-dir", str(tmp_configs_dir),
-        "config", "edit", "ops", "butter_bandpass.low_hz", "300",
-    ])
+    rc = main(
+        [
+            "--config-dir",
+            str(tmp_configs_dir),
+            "config",
+            "edit",
+            "ops",
+            "butter_bandpass.low_hz",
+            "300",
+        ]
+    )
     assert rc == 0
     # verify the change persisted
-    import yaml
-    data = yaml.safe_load((tmp_configs_dir / "ops.yaml").read_text())
-    assert data["butter_bandpass"]["low_hz"] == 300
+    import tomllib
+
+    with (tmp_configs_dir / "config.toml").open("rb") as f:
+        data = tomllib.load(f)
+    assert data["ops"]["butter_bandpass"]["low_hz"] == 300
 
 
 def test_cli_ops_list(tmp_configs_dir):
@@ -66,10 +75,23 @@ def test_cli_ops_list(tmp_configs_dir):
     out = buf.getvalue()
     # All 17 ops should appear in the listing
     for op in (
-        "butter_bandpass", "notch_filter", "saturation_mask", "constant_rms",
-        "sliding_rms", "spike_pca", "spike_curate", "baseline_correction",
-        "rt_detect", "sigmoid", "rt_thresh", "gcamp_sim", "x_corr",
-        "spectrogram", "freq_traces", "amp_gain_correction", "saturation_survey",
+        "butter_bandpass",
+        "notch_filter",
+        "saturation_mask",
+        "constant_rms",
+        "sliding_rms",
+        "spike_pca",
+        "spike_curate",
+        "baseline_correction",
+        "rt_detect",
+        "sigmoid",
+        "rt_thresh",
+        "gcamp_sim",
+        "x_corr",
+        "spectrogram",
+        "freq_traces",
+        "amp_gain_correction",
+        "saturation_survey",
     ):
         assert op in out, f"missing op {op} in `iris ops list` output"
 
@@ -78,12 +100,17 @@ def test_cli_session_new_and_list(tmp_configs_dir, tmp_path, monkeypatch):
     # Re-write configs/paths.yaml to point output_dir at the tmp dir so the
     # session is created somewhere we can clean up
     out_dir = tmp_path / "outputs"
-    (tmp_configs_dir / "paths.yaml").write_text(
+    # Windows paths have backslashes that TOML would interpret as escapes,
+    # so convert to forward slashes (TOML treats them verbatim).
+    out_dir_str = str(out_dir).replace("\\", "/")
+    cache_dir_str = str(tmp_path / "cache").replace("\\", "/")
+    (tmp_configs_dir / "config.toml").write_text(
         f"""
-mea_h5: nonexistent_mea.h5
-ca_traces_npz: nonexistent_ca.npz
-output_dir: {out_dir}
-cache_dir: {tmp_path / "cache"}
+[paths]
+mea_h5 = "nonexistent_mea.h5"
+ca_traces_npz = "nonexistent_ca.npz"
+output_dir = "{out_dir_str}"
+cache_dir = "{cache_dir_str}"
 """.strip()
     )
 

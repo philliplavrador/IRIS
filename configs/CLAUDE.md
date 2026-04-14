@@ -1,30 +1,53 @@
 # configs/ — config navigation
 
-Three YAML files drive IRIS runs. Loaded by both the CLI and the Python daemon via `iris.config.load_configs()`.
+IRIS is configured from a single TOML file. It replaced the legacy
+`paths.yaml` / `ops.yaml` / `globals.yaml` / `agent_rules.yaml` quartet in
+REVAMP Task 0.7. Loaded by both the CLI and the Python daemon via
+`iris.config.load_configs()`, which uses stdlib `tomllib`.
 
-## Files
+## File
 
-| File | What it holds |
+- [config.toml](config.toml) — global defaults. Per-project overrides (same
+  schema, partial) live at `projects/<name>/config.toml`.
+
+## Schema overview
+
+| Section | What it holds |
 |---|---|
-| [paths.yaml](paths.yaml) | File paths: `mea_h5`, `ca_traces_npz`, `rt_model_path`, `output_dir`, `cache_dir`. Supports `~`, `${ENV_VAR}`, and relative paths. |
-| [ops.yaml](ops.yaml) | Default parameters for every operation. Flat — op name → params dict. |
-| [globals.yaml](globals.yaml) | Execution settings: `plot_backend`, `window_ms`, cache toggles. |
+| `[paths]` | Required: `mea_h5`, `ca_traces_npz`, `output_dir`, `cache_dir`. Optional: `rt_model_outputs_npy`, `rt_model_path`. Relative paths resolve against the repo root; `~` and `${ENV_VAR}` expand. |
+| `[engine]` | Execution knobs: `memory_cache`, `disk_cache`. |
+| `[plot]` | Plot backend + annotation defaults: `backend`, `show_ops_params`, `save_plots`, `window_ms`. |
+| `[agent]` | `rules` (multiline string). |
+| `[agent.dials]` | Per-install autonomy / pushback defaults: `autonomy`, `pushback`. |
+| `[ops.<op_name>]` | Per-operation parameter defaults. One table per op. |
+
+The CLI (`iris config show`) still presents a flat `globals` dict for
+backwards compatibility — that dict is projected from `[plot]` + `[engine]`
+by `iris.config._flatten_globals()`.
 
 ## How project overrides compose
 
-When a project is active, `iris.config.apply_project_overrides` rewrites the global config in memory:
+When a project is active, `iris.config.apply_project_overrides` reads
+`projects/<name>/config.toml` and deep-merges it on top of the global config
+in memory:
 
-1. `paths["output_dir"]` → `projects/<name>/output`
-2. `paths["cache_dir"]` → `projects/<name>/.cache`
-3. Any `paths_overrides`, `ops_overrides`, `globals_overrides` in `projects/<name>/claude_config.yaml` are deep-merged (project wins).
+1. `paths["output_dir"]` → `projects/<name>/output` (always)
+2. `paths["cache_dir"]` → `projects/<name>/.cache` (always)
+3. `[paths]` / `[ops.*]` / `[plot]` / `[engine]` / `[agent]` sections in
+   the project's `config.toml` win over the globals.
 
-The global `configs/` files are never mutated by this; the override is in-memory.
+The global `configs/config.toml` is never mutated by this; the override is
+in-memory only.
 
 ## Rules
 
-- **Never** edit these files directly from the agent. Use `iris config edit <file> <key> <value>`.
-- **Never** add new required keys without updating `_REQUIRED_PATH_KEYS` in [../src/iris/config.py](../src/iris/config.py).
+- **Never** edit `config.toml` directly from the agent. Use
+  `iris config edit <bucket> <key> <value>`. The bucket is one of `paths`,
+  `ops`, `globals` (legacy name that still maps onto `[plot]` / `[engine]`).
+- **Never** add new required keys without updating `_REQUIRED_PATH_KEYS` in
+  [../src/iris/config.py](../src/iris/config.py).
 
 ## See also
 - [../CLAUDE.md](../CLAUDE.md) — repo root nav
 - [../src/iris/config.py](../src/iris/config.py) — loader + override logic
+- `IRIS Memory Restructure.md` §6 — filesystem layout spec

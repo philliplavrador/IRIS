@@ -66,7 +66,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config-dir",
         default=DEFAULT_CONFIG_DIR,
-        help="Directory containing paths.yaml, ops.yaml, globals.yaml (default: %(default)s)",
+        help="Directory containing config.toml (default: %(default)s)",
     )
 
     sub = parser.add_subparsers(dest="cmd", metavar="<command>")
@@ -220,11 +220,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_run.add_argument(
         "--window",
         default=None,
-        help='Window directive: "full" or "<start_ms>,<end_ms>" (overrides globals.yaml)',
+        help='Window directive: "full" or "<start_ms>,<end_ms>" (overrides [plot].window_ms)',
     )
-    p_run.add_argument(
-        "--backend", default=None, help="Override globals.yaml plot_backend for this run"
-    )
+    p_run.add_argument("--backend", default=None, help="Override [plot].backend for this run")
     p_run.add_argument(
         "--force", action="store_true", help="Bypass the project plot cache and always re-run"
     )

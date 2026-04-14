@@ -1,0 +1,167 @@
+# IRIS global configuration.
+#
+# This file replaces the legacy configs/{paths,ops,globals,agent_rules}.yaml quartet.
+# Loaded by iris.config.load_configs() via the stdlib tomllib.
+#
+# Per-project overrides live at projects/<name>/config.toml and are merged
+# on top of this file by iris.config.apply_project_overrides().
+
+# ---------------------------------------------------------------------------
+# [paths] — file paths used by the pipeline.
+# Relative paths resolve against the repo root (the directory containing
+# pyproject.toml). ~ and ${ENV_VAR} are expanded.
+# ---------------------------------------------------------------------------
+[paths]
+mea_h5 = "legacy/data/alignment-data/Test-B/MEA_B.raw.h5"
+ca_traces_npz = "legacy/data/alignment-data/Test-B/CA_traces_B.npz"
+rt_model_outputs_npy = "legacy/data/alignment-data/Test-B/sequences/model_outputs.npy"
+rt_model_path = "legacy/models/rtsort_model"
+output_dir = "outputs"
+cache_dir = "cache"
+
+# ---------------------------------------------------------------------------
+# [engine] — execution / caching knobs.
+# ---------------------------------------------------------------------------
+[engine]
+# In-memory prefix-cache reuse within a single pipeline run.
+memory_cache = true
+# Disk-persistent pickle cache across runs.
+disk_cache = true
+
+# ---------------------------------------------------------------------------
+# [plot] — plot backend + annotation defaults.
+#
+# backend:
+#   matplotlib         static PNG via matplotlib.savefig (default, headless-safe)
+#   matplotlib_widget  interactive ipympl widget for Jupyter notebooks
+#   pyqtgraph          standalone desktop GUI window (live exploration)
+#   pyqplot            publication-quality PDF/SVG via qplot binary
+# ---------------------------------------------------------------------------
+[plot]
+backend = "matplotlib"
+show_ops_params = true
+save_plots = true
+# window_ms = "full"          # or [14487.05, 44352.95]
+
+# ---------------------------------------------------------------------------
+# [agent] — global behavior rules + dials.
+# ---------------------------------------------------------------------------
+[agent]
+rules = """
+- Always use the specific data source the user requests. Never substitute a different dataset without asking.
+- When the user asks for a plot or analysis of specific data, confirm you are using the correct file before proceeding.
+- If the requested data source is ambiguous, ask for clarification rather than guessing.
+- Follow the user's instructions precisely. Do not add unrequested extras or deviate from what was asked.
+- When multiple data files exist in input_data/, list them and confirm which one to use if not obvious.
+"""
+
+[agent.dials]
+autonomy = "medium"   # "low" | "medium" | "high"
+pushback = "medium"   # "low" | "medium" | "high"
+
+# ---------------------------------------------------------------------------
+# [ops.*] — per-operation parameter defaults.
+# Inline kwargs in DSL strings override these defaults.
+# See docs/operations.md for the math behind every op.
+# ---------------------------------------------------------------------------
+
+[ops.butter_bandpass]
+low_hz = 350
+high_hz = 6000
+order = 10
+zero_phase = true
+
+[ops.notch_filter]
+notch_freq_hz = 60.0
+notch_q = 30.0
+harmonics = [1, 2, 3, 4, 5]
+
+[ops.saturation_mask]
+min_run = 20
+eps_range = 1.0
+lookahead = 400
+recovery_eps = 5.0
+pre_samples = 250
+mode = "cut_window"       # "fill_nan" | "fill_zeroes" | "cut_window"
+scope = "leading"         # "all" | "leading"
+sync_cut = true
+drop_saturated_pct = 0.30
+
+[ops.saturation_survey]
+min_run = 20
+eps_range = 1.0
+lookahead = 400
+recovery_eps = 5.0
+pre_samples = 250
+scope = "leading"
+plot_type = "histogram"   # "histogram" | "scatter" | "survival"
+
+[ops.amp_gain_correction]
+broadband_range_hz = [350, 3000]
+nperseg = 16384
+noverlap = 16374
+window = "hann"
+
+[ops.baseline_correction]
+window_frames = 41
+percentile = 20
+
+[ops.constant_rms]
+k = 5.0
+min_spike_distance_ms = 1.0
+
+[ops.sliding_rms]
+k = 5.0
+half_window_ms = 250.0
+min_spike_distance_ms = 1.0
+min_nonzero_fraction = 0.2
+zero_eps = 1.0e-4
+zero_buffer_ms = 0.0
+
+[ops.spike_pca]
+snippet_ms = 1.5
+n_components = 3
+outlier_std = 2.5
+min_spikes = 10
+
+[ops.spike_curate]
+corr_threshold = 0.005
+max_lag_ms = 500.0
+
+[ops.rt_detect]
+inference_scaling_numerator = 12.6
+# pre_median_frames: null -> full trace; omit to disable
+pre_median_frames = 1000
+
+[ops.gcamp_sim]
+half_rise_ms = 80.0
+half_decay_ms = 500.0
+duration_ms = 2500.0
+peak_dff = 0.20
+
+[ops.sigmoid]
+# logistic transform — no params
+
+[ops.rt_thresh]
+threshold = 0.275
+
+[ops.x_corr]
+max_lag_ms = 500.0
+normalize = true
+adapt_circle_size = true
+
+[ops.freq_traces]
+freqs_hz = [60, 120, 300]
+broadband_range_hz = [350, 3000]
+nperseg = 16384
+noverlap = 16374
+window = "hann"
+
+[ops.spectrogram]
+nperseg = 16384
+# noverlap: omit to let scipy default to nperseg // 2
+window = "hann"
+scaling = "density"       # "density" | "spectrum"
+fmin = 0
+fmax = 360
+db_scale = true
