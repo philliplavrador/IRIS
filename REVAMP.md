@@ -840,7 +840,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 ---
 
-### [ ] Task 6.2 — transformations.py
+### [x] Task 6.2 — transformations.py
 
 **Phase**: 6 · **Effort**: M · **Blocks**: 6.3
 
