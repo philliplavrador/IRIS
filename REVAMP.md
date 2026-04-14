@@ -1387,7 +1387,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ## Phase 15 — V2: Operation Validation
 
-### [ ] Task 15.1 — op_validation.py
+### [x] Task 15.1 — op_validation.py
 
 **Phase**: 15 · **Effort**: L · **Blocks**: 15.2
 
