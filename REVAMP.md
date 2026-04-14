@@ -452,7 +452,7 @@ Goal: every state change downstream of this phase writes an event row. Hash chai
 
 ---
 
-### [ ] Task 2.2 — tests/test_events.py
+### [x] Task 2.2 — tests/test_events.py
 
 **Phase**: 2 · **Effort**: S · **Blocks**: 2.3
 

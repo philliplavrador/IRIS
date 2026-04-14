@@ -13,10 +13,12 @@ Design
   Canonical JSON is ``json.dumps(payload, sort_keys=True,
   separators=(",", ":"))`` so equivalent dicts always hash the same.
 - **Chain head per project**: looked up with
-  ``SELECT event_hash FROM events WHERE project_id=? ORDER BY ts DESC,
-  rowid DESC LIMIT 1``. Append + read happen inside one
-  ``BEGIN IMMEDIATE`` transaction so concurrent writers serialize
-  cleanly under SQLite's WAL.
+  ``SELECT event_hash FROM events WHERE project_id=? ORDER BY rowid DESC
+  LIMIT 1``. Append + read happen inside one ``BEGIN IMMEDIATE``
+  transaction so concurrent writers serialize cleanly under SQLite's
+  WAL. ``rowid`` (insertion order) is the chain spine — ``ts`` is human
+  metadata only and may go non-monotonic across threads when wall-clock
+  resolution coincides or system time skews.
 - **Concurrency**: SQLite WAL allows many readers but one writer; the
   daemon is single-process and ``BEGIN IMMEDIATE`` plus the row lock
   on ``events`` is sufficient.
@@ -153,9 +155,7 @@ def append_event(
     conn.execute("BEGIN IMMEDIATE")
     try:
         row = conn.execute(
-            "SELECT event_hash FROM events "
-            "WHERE project_id = ? "
-            "ORDER BY ts DESC, rowid DESC LIMIT 1",
+            "SELECT event_hash FROM events WHERE project_id = ? ORDER BY rowid DESC LIMIT 1",
             (project_id,),
         ).fetchone()
         prev_event_hash: str | None = row[0] if row is not None else None
@@ -198,7 +198,7 @@ def verify_chain(conn: sqlite3.Connection, project_id: str) -> dict[str, Any]:
     rows = conn.execute(
         "SELECT event_id, type, payload_json, prev_event_hash, event_hash "
         "FROM events WHERE project_id = ? "
-        "ORDER BY ts ASC, rowid ASC",
+        "ORDER BY rowid ASC",
         (project_id,),
     ).fetchall()
 
