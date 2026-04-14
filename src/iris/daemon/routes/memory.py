@@ -33,6 +33,12 @@ Endpoints (all mounted under ``/api`` by ``daemon.app``)::
     POST /memory/entries/supersede        Supersede one entry with another
     DELETE /memory/entries/{id}           Soft-delete (archive)
     POST /memory/extract                  LLM session extraction (lazy import)
+    POST /memory/datasets                 Import a dataset (raw version)
+    GET  /memory/datasets                 List datasets for the active project
+    GET  /memory/datasets/{id}            Fetch one dataset + its versions
+    GET  /memory/datasets/{id}/versions   List versions of a dataset
+    POST /memory/datasets/{id}/profile    Profile a version (lazy import)
+    POST /memory/datasets/{id}/derive     Record a derived version
 
 All routes resolve the **active** project via
 :func:`iris.projects.resolve_active_project`. There is no ``?project=``
@@ -55,6 +61,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from iris.projects import artifacts as _artifacts
+from iris.projects import datasets as _datasets
 from iris.projects import db as _db
 from iris.projects import events as _events
 from iris.projects import markdown_sync as _markdown_sync
@@ -65,6 +72,7 @@ from iris.projects import resolve_active_project
 from iris.projects import runs as _runs
 from iris.projects import sessions as _sessions
 from iris.projects import tool_calls as _tool_calls
+from iris.projects import transformations as _transformations
 
 router = APIRouter(tags=["memory"])
 
@@ -1140,5 +1148,166 @@ async def delete_artifact(artifact_id: str) -> dict[str, Any]:
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
         return {"data": {"artifact_id": artifact_id}}
+    finally:
+        conn.close()
+
+
+# -- datasets ---------------------------------------------------------------
+
+
+class ImportDatasetRequest(BaseModel):
+    """Body for ``POST /memory/datasets``.
+
+    ``source_path`` is resolved on the daemon host (the daemon runs locally
+    alongside the project tree, so user-side paths are valid).
+    """
+
+    source_path: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    description: str | None = None
+
+
+class ProfileDatasetRequest(BaseModel):
+    version_id: str = Field(min_length=1)
+
+
+class DeriveVersionRequest(BaseModel):
+    parent_version_id: str = Field(min_length=1)
+    transform_name: str = Field(min_length=1)
+    transform_params: dict[str, Any] = Field(default_factory=dict)
+    artifact_id: str = Field(min_length=1)
+    description: str | None = None
+
+
+@router.post("/memory/datasets")
+async def import_dataset(req: ImportDatasetRequest) -> dict[str, Any]:
+    """Copy ``source_path`` into the project and record a raw dataset version."""
+    path = _active_project()
+    conn = _db.connect(path)
+    try:
+        _db.init_schema(conn)
+        project_id = _project_id_for(path)
+        _ensure_project_row(conn, project_id, path.name)
+        try:
+            dataset_id, dataset_version_id = _datasets.import_dataset(
+                conn,
+                path,
+                source_path=Path(req.source_path),
+                name=req.name,
+                description=req.description,
+            )
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {
+            "data": {
+                "dataset_id": dataset_id,
+                "dataset_version_id": dataset_version_id,
+            }
+        }
+    finally:
+        conn.close()
+
+
+@router.get("/memory/datasets")
+async def list_datasets() -> dict[str, Any]:
+    """List every dataset for the active project, newest first."""
+    conn, project_id = _open()
+    try:
+        rows = _datasets.list_datasets(conn, project_id=project_id)
+        return {"data": rows}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/datasets/{dataset_id}")
+async def get_dataset(dataset_id: str) -> dict[str, Any]:
+    """Fetch one dataset row plus its full version list."""
+    conn, _ = _open()
+    try:
+        row = _datasets.get_dataset(conn, dataset_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"dataset {dataset_id!r} not found")
+        versions = _transformations.list_versions(conn, dataset_id=dataset_id)
+        return {"data": {**row, "versions": versions}}
+    finally:
+        conn.close()
+
+
+@router.get("/memory/datasets/{dataset_id}/versions")
+async def list_dataset_versions(dataset_id: str) -> dict[str, Any]:
+    """List every version of ``dataset_id`` ordered oldest to newest."""
+    conn, _ = _open()
+    try:
+        row = _datasets.get_dataset(conn, dataset_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"dataset {dataset_id!r} not found")
+        versions = _transformations.list_versions(conn, dataset_id=dataset_id)
+        return {"data": versions}
+    finally:
+        conn.close()
+
+
+@router.post("/memory/datasets/{dataset_id}/profile")
+async def profile_dataset(dataset_id: str, req: ProfileDatasetRequest) -> dict[str, Any]:
+    """Profile a raw version of ``dataset_id`` and propose per-column memories.
+
+    ``profile_dataset`` is lazily imported: the module pulls in optional
+    heavyweight deps (``pandas``, ``pyarrow``, ``h5py``) and should not block
+    daemon startup. Returns 503 if the import fails.
+    """
+    try:
+        from iris.projects import profile as _profile  # noqa: PLC0415
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"profile module unavailable: {e}",
+        ) from e
+
+    path = _active_project()
+    conn = _db.connect(path)
+    try:
+        _db.init_schema(conn)
+        project_id = _project_id_for(path)
+        _ensure_project_row(conn, project_id, path.name)
+        try:
+            result = _profile.profile_dataset(
+                conn,
+                path,
+                dataset_id=dataset_id,
+                version_id=req.version_id,
+            )
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=410, detail=str(e)) from e
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=str(e)) from e
+        return {"data": result}
+    finally:
+        conn.close()
+
+
+@router.post("/memory/datasets/{dataset_id}/derive")
+async def derive_dataset_version(dataset_id: str, req: DeriveVersionRequest) -> dict[str, Any]:
+    """Record a derived dataset version from an existing artifact."""
+    conn, _ = _open()
+    try:
+        try:
+            dataset_version_id = _transformations.record_derived_version(
+                conn,
+                dataset_id=dataset_id,
+                parent_version_id=req.parent_version_id,
+                transform_name=req.transform_name,
+                transform_params=req.transform_params,
+                artifact_id=req.artifact_id,
+                description=req.description,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {"data": {"dataset_version_id": dataset_version_id}}
     finally:
         conn.close()
