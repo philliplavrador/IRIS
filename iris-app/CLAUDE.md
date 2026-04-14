@@ -66,8 +66,8 @@ iris-app/
 ## Memory-rewrite status
 
 The backend memory layer is being rebuilt per
-[`../IRIS Memory Restructure.md`](../IRIS%20Memory%20Restructure.md) /
-[`../REVAMP.md`](../REVAMP.md). Frontend changes are minimized during that
+[`../docs/memory-restructure.md`](../docs/memory-restructure.md) /
+[`../docs/REVAMP.md`](../docs/REVAMP.md). Frontend changes are minimized during that
 rewrite — the full Appendix A UX (curation panel, contradictions inbox,
 provenance drawer, dataset cards, operation catalog) is **deferred** until the
 backend stabilizes (REVAMP Phases 18+). Only narrow updates land in
@@ -108,4 +108,4 @@ in REVAMP Task 7.5) is deferred — validation is `npx tsc --noEmit` + `npm test
 - [../src/iris/CLAUDE.md](../src/iris/CLAUDE.md) — Python engine
 - [server/CLAUDE.md](server/CLAUDE.md) — Express proxy + agent bridge contract
 - [src/renderer/CLAUDE.md](src/renderer/CLAUDE.md) — frontend module map
-- [../REVAMP.md](../REVAMP.md) — memory rewrite ledger
+- [../docs/REVAMP.md](../docs/REVAMP.md) — memory rewrite ledger

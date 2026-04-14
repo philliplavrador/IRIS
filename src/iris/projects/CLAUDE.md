@@ -1,7 +1,7 @@
 # src/iris/projects/ — memory-layer module map
 
 This package is the Python implementation of the IRIS memory system described in
-[`IRIS Memory Restructure.md`](../../../IRIS%20Memory%20Restructure.md). It owns
+[`docs/memory-restructure.md`](../../../docs/memory-restructure.md). It owns
 the project workspace lifecycle, the SQLite schema (`iris.sqlite`), every memory
 store, retrieval, extraction, and the Markdown sync layer. The daemon
 (`src/iris/daemon/`) is a thin HTTP shell over this package; the webapp never
@@ -175,6 +175,6 @@ Build strictly bottom-up:
 
 ## See also
 - [`../CLAUDE.md`](../CLAUDE.md) — package-level navigation
-- [`../../../IRIS Memory Restructure.md`](../../../IRIS%20Memory%20Restructure.md) — design spec (authoritative)
-- [`../../../REVAMP.md`](../../../REVAMP.md) — task ledger (this document)
+- [`../../../docs/memory-restructure.md`](../../../docs/memory-restructure.md) — design spec (authoritative)
+- [`../../../docs/REVAMP.md`](../../../docs/REVAMP.md) — task ledger (this document)
 - [`../daemon/CLAUDE.md`](../daemon/CLAUDE.md) — how these modules are exposed over HTTP

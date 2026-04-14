@@ -10,7 +10,7 @@
 
 ## Status
 
-**V2 memory system complete (2026-04).** The engine, DSL, 17 ops, and webapp shell are stable. The memory layer rewrite per [`IRIS Memory Restructure.md`](IRIS%20Memory%20Restructure.md) is shipped through **Phase 17**: SQLite-backed memory entries with propose→commit flow, FTS5 retrieval with triple-weighted rerank, optional sqlite-vec hybrid fusion, session-end + per-turn extraction, reflection cycles, progressive summarization, generated-op validation sandbox, LLM-driven contradiction detection, type-specific temporal decay, and retrieval-to-usage metrics. SpikeLab port (Phases 18–23) is **deferred**. Tracker: [`REVAMP.md`](REVAMP.md). Release tag: `v2.0-memory`.
+**V2 memory system complete (2026-04).** The engine, DSL, 17 ops, and webapp shell are stable. The memory layer rewrite per [`docs/memory-restructure.md`](docs/memory-restructure.md) is shipped through **Phase 17**: SQLite-backed memory entries with propose→commit flow, FTS5 retrieval with triple-weighted rerank, optional sqlite-vec hybrid fusion, session-end + per-turn extraction, reflection cycles, progressive summarization, generated-op validation sandbox, LLM-driven contradiction detection, type-specific temporal decay, and retrieval-to-usage metrics. SpikeLab port (Phases 18–23) is **deferred**. Tracker: [`docs/REVAMP.md`](docs/REVAMP.md). Release tag: `v2.0-memory`.
 
 ---
 
@@ -228,7 +228,7 @@ IRIS pulls context from relevant published work and uses it to interpret unusual
 
 ## How IRIS manages memory
 
-IRIS's value comes from remembering, so memory isn't a side feature — it's the core. The design below describes the target end-state from [`IRIS Memory Restructure.md`](IRIS%20Memory%20Restructure.md). The storage substrates (SQLite + files + Markdown) and propose/commit curation are shipped; the intelligence layer (semantic search, reranking, reflection, continuous extraction, semantic dedup) is *planned* for later phases of the rewrite.
+IRIS's value comes from remembering, so memory isn't a side feature — it's the core. The design below describes the target end-state from [`docs/memory-restructure.md`](docs/memory-restructure.md). The storage substrates (SQLite + files + Markdown) and propose/commit curation are shipped; the intelligence layer (semantic search, reranking, reflection, continuous extraction, semantic dedup) is *planned* for later phases of the rewrite.
 
 ### Three substrates, one truth
 
@@ -278,7 +278,7 @@ Retrieval is hybrid, so the right memories surface whether you ask by keyword or
 - **Per-project scoping** — switching projects switches context entirely; no cross-project leakage.
 - **Local and inspectable** — everything is a file on your machine. Back it up, read it, delete it. No hidden vendor state.
 
-Deeper dive: [`IRIS Memory Restructure.md`](IRIS%20Memory%20Restructure.md) (full design spec).
+Deeper dive: [`docs/memory-restructure.md`](docs/memory-restructure.md) (full design spec).
 
 ---
 
@@ -379,8 +379,8 @@ iris run "mea_trace(861).butter_bandpass.spectrogram"
 
 | Document | What it covers |
 |---|---|
-| [`REVAMP.md`](REVAMP.md) | Ordered task ledger for the in-progress memory-system rewrite |
-| [`IRIS Memory Restructure.md`](IRIS%20Memory%20Restructure.md) | Design spec for the new memory layer |
+| [`docs/REVAMP.md`](docs/REVAMP.md) | Ordered task ledger for the in-progress memory-system rewrite |
+| [`docs/memory-restructure.md`](docs/memory-restructure.md) | Design spec for the new memory layer |
 | [`docs/architecture.md`](docs/architecture.md) | DSL, AST, executor, cache, type system, bank vectorization |
 | [`docs/operations.md`](docs/operations.md) | Math reference for all 17 ops |
 | [`docs/projects.md`](docs/projects.md) | Project workspace contract |

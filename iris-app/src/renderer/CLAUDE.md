@@ -17,7 +17,7 @@ to 4002.
 
 ## 2. What's changing (REVAMP sweep)
 
-Appendix A of `IRIS Memory Restructure.md` describes the full new UI surface
+Appendix A of `docs/memory-restructure.md` describes the full new UI surface
 (curation panel, provenance drawer, contradictions inbox, dataset cards,
 operation catalog). That UX work is **deferred** until the memory backend
 stabilizes — concretely, until Phase 17 is green.
@@ -56,11 +56,11 @@ REVAMP).
 - New features land behind a feature flag in `lib/flags.ts` until the
   corresponding backend phase is green (prevents partial builds on `main`).
 - Component tests in `__tests__/` should mock the API layer, not WebSocket.
-- Designs for Appendix A UX live in `IRIS Memory Restructure.md` — read the
+- Designs for Appendix A UX live in `docs/memory-restructure.md` — read the
   appendix before touching curation/contradictions components.
 
 ## See also
 - [../../CLAUDE.md](../../CLAUDE.md) — webapp overview
 - [../server/CLAUDE.md](../server/CLAUDE.md) — Express contract
-- [../../../REVAMP.md](../../../REVAMP.md) — task ledger
-- `IRIS Memory Restructure.md` Appendix A — deferred UX spec
+- [../../../docs/REVAMP.md](../../../docs/REVAMP.md) — task ledger
+- `docs/memory-restructure.md` Appendix A — deferred UX spec

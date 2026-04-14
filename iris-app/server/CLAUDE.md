@@ -61,4 +61,4 @@ messages over WebSocket.
 - [../CLAUDE.md](../CLAUDE.md) — webapp overview
 - [../../src/iris/daemon/routes/CLAUDE.md](../../src/iris/daemon/routes/CLAUDE.md) — daemon endpoint inventory
 - [../src/renderer/CLAUDE.md](../src/renderer/CLAUDE.md) — frontend module map
-- [../../REVAMP.md](../../REVAMP.md) — task ledger
+- [../../docs/REVAMP.md](../../docs/REVAMP.md) — task ledger

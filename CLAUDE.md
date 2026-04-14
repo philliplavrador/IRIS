@@ -5,8 +5,8 @@ IRIS is a **local AI-powered data analysis webapp**. Users create projects, uplo
 ## Memory System Migration (active)
 
 The memory layer is being rewritten end-to-end. The authoritative design is
-[`IRIS Memory Restructure.md`](IRIS%20Memory%20Restructure.md); the ordered
-task ledger is [`REVAMP.md`](REVAMP.md). If you are implementing anything
+[`docs/memory-restructure.md`](docs/memory-restructure.md); the ordered
+task ledger is [`docs/REVAMP.md`](docs/REVAMP.md). If you are implementing anything
 under `src/iris/projects/`, `src/iris/daemon/routes/memory.py`, or the
 memory-facing parts of the webapp, **read REVAMP.md first** — it tells you
 which task is next, which files to touch, and which tests must pass.
@@ -37,14 +37,14 @@ docs/              Architecture, operations math, project contract
 
 - **Never load more than 2 `CLAUDE.md` files in total.** These files are nav gateways, not reading material.
 - **Always check for an active project** via `cat .iris/active_project` before doing anything else.
-- **Never load `IRIS Memory Restructure.md` in full** — jump to the § the REVAMP task cites.
+- **Never load `docs/memory-restructure.md` in full** — jump to the § the REVAMP task cites.
 
 ## Where to go
 
 | Task | Read this |
 |---|---|
-| Pick the next REVAMP task | [REVAMP.md](REVAMP.md) |
-| Memory-system design spec | [IRIS Memory Restructure.md](IRIS%20Memory%20Restructure.md) |
+| Pick the next REVAMP task | [docs/REVAMP.md](docs/REVAMP.md) |
+| Memory-system design spec | [docs/memory-restructure.md](docs/memory-restructure.md) |
 | Webapp frontend or backend | [iris-app/CLAUDE.md](iris-app/CLAUDE.md) → React + Express + Agent SDK |
 | Python package map | [src/iris/CLAUDE.md](src/iris/CLAUDE.md) |
 | Memory module map (detailed) | [src/iris/projects/CLAUDE.md](src/iris/projects/CLAUDE.md) |
@@ -88,7 +88,7 @@ iris run "mea_trace(861).butter_bandpass.spectrogram"
 - `uv run pytest -x -q` before reporting any change as complete.
 - `uv run ruff check --fix src tests && uv run ruff format src tests`.
 - Tasks inside REVAMP have their own validation gate — run the full
-  [Standard validation gate](REVAMP.md#standard-validation-gate-every-task).
+  [Standard validation gate](docs/REVAMP.md#standard-validation-gate-every-task).
 
 ## After editing webapp files
 

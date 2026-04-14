@@ -9,7 +9,7 @@ curated Markdown). Projects are gitignored except for ``TEMPLATE/``,
 The active project is tracked via ``.iris/active_project`` (an untracked
 file at the repo root containing a single project name).
 
-See ``IRIS Memory Restructure.md`` §6 for the filesystem contract and
+See ``docs/memory-restructure.md`` §6 for the filesystem contract and
 ``src/iris/projects/CLAUDE.md`` for the module map.
 """
 

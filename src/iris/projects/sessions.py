@@ -28,7 +28,7 @@ to readers even if the event-log append fails downstream — which is
 the right ordering for session lifecycle events (the row exists; the
 chain link is best-effort but always recorded if the DB is healthy).
 
-See ``IRIS Memory Restructure.md`` §7.1 for the schema.
+See ``docs/memory-restructure.md`` §7.1 for the schema.
 """
 
 from __future__ import annotations

@@ -52,4 +52,4 @@ Request handling only. Parse body, resolve project, call into
 ## See also
 - [../CLAUDE.md](../CLAUDE.md) — daemon overview
 - [../../projects/CLAUDE.md](../../projects/CLAUDE.md) — module map
-- [../../../../REVAMP.md](../../../../REVAMP.md) — task ledger
+- [../../../../docs/REVAMP.md](../../../../docs/REVAMP.md) — task ledger

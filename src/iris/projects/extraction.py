@@ -1,6 +1,6 @@
 """Session-end LLM extraction of semantic memories.
 
-Spec refs: `IRIS Memory Restructure.md` §10.1 (passive extraction — session-end
+Spec refs: `docs/memory-restructure.md` §10.1 (passive extraction — session-end
 pathway) and §11.4 (importance threshold of 4/10).
 
 This module reads all messages recorded for a memory session, asks Claude to

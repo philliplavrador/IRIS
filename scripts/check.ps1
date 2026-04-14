@@ -1,5 +1,5 @@
 # Maximalist validation gate for IRIS (Windows / PowerShell).
-# Mirrors scripts/check.sh. Runs the Standard validation gate from REVAMP.md.
+# Mirrors scripts/check.sh. Runs the Standard validation gate from docs/REVAMP.md.
 
 $ErrorActionPreference = 'Continue'
 $repoRoot = Split-Path -Parent $PSScriptRoot

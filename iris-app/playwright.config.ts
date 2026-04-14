@@ -5,7 +5,7 @@ import { defineConfig } from '@playwright/test'
  *
  * Tests assume `npm run dev` is already running (Vite on 4173, Express on
  * 4001, Python daemon on 4002). Each phase boundary contributes one spec
- * under `e2e/` — see REVAMP.md.
+ * under `e2e/` — see docs/REVAMP.md.
  */
 export default defineConfig({
   testDir: './e2e',

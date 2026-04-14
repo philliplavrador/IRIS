@@ -49,4 +49,4 @@ restructure the package.
 - [../CLAUDE.md](../CLAUDE.md) — package overview + op-authoring checklist
 - [../../../docs/operations.md](../../../docs/operations.md) — op catalog
 - [../../../docs/architecture.md](../../../docs/architecture.md) — DSL, AST, cache semantics
-- [../../../REVAMP.md](../../../REVAMP.md) — task ledger
+- [../../../docs/REVAMP.md](../../../docs/REVAMP.md) — task ledger

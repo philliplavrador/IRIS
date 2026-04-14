@@ -158,7 +158,7 @@ Goal: clear every file destined for deletion before any rewrite begins. Build wi
 
 **Phase**: 0 · **Effort**: M · **Blocks**: 1.7
 
-**References**: `IRIS Memory Restructure.md` §6 (Filesystem Layout)
+**References**: `memory-restructure.md` §6 (Filesystem Layout)
 
 **Files to delete**:
 - `projects/TEMPLATE/conversations/`
@@ -198,7 +198,7 @@ Goal: clear every file destined for deletion before any rewrite begins. Build wi
 
 **Phase**: 0 · **Effort**: M · **Blocks**: 1.7, 1.10, all later config-touching tasks
 
-**References**: `IRIS Memory Restructure.md` §6
+**References**: `memory-restructure.md` §6
 
 **Files to delete**:
 - `configs/globals.yaml`
@@ -249,7 +249,7 @@ Goal: stand up `iris.sqlite` per spec §7, scaffold every CLAUDE.md the implemen
 
 **Phase**: 1 · **Effort**: L · **Blocks**: every later task that references a CLAUDE.md
 
-**References**: `IRIS Memory Restructure.md` (whole document for cross-references); existing `CLAUDE.md`, `src/iris/CLAUDE.md`, `iris-app/CLAUDE.md` for tone.
+**References**: `memory-restructure.md` (whole document for cross-references); existing `CLAUDE.md`, `src/iris/CLAUDE.md`, `iris-app/CLAUDE.md` for tone.
 
 **Files to create**:
 - `src/iris/projects/CLAUDE.md` — most detailed nav file. Per-module map: every module to be built across Phases 1–17 with name, role, public API, storage, spec §, and links to the task that creates it.
@@ -261,7 +261,7 @@ Goal: stand up `iris.sqlite` per spec §7, scaffold every CLAUDE.md the implemen
 - `src/iris/engine/CLAUDE.md` — short note that engine is stable; SpikeLab port adds files but doesn't restructure.
 
 **Files to modify**:
-- `CLAUDE.md` (root) — add **Memory System Migration** section linking to `IRIS Memory Restructure.md` and `REVAMP.md`. Refresh "Where to go" table.
+- `CLAUDE.md` (root) — add **Memory System Migration** section linking to `memory-restructure.md` and `REVAMP.md`. Refresh "Where to go" table.
 - `src/iris/CLAUDE.md` — refresh module map for new `projects/` layout.
 - `iris-app/CLAUDE.md` — note frontend deferral of Appendix A UX.
 - `projects/TEMPLATE/CLAUDE.md` — already touched in Task 0.6; just confirm cross-links.
@@ -280,7 +280,7 @@ Goal: stand up `iris.sqlite` per spec §7, scaffold every CLAUDE.md the implemen
 
 **Phase**: 1 · **Effort**: M · **Blocks**: 1.3, 2.1, all later DB tasks
 
-**References**: `IRIS Memory Restructure.md` §7.1 (full DDL) + §7.2 (rationale comments)
+**References**: `memory-restructure.md` §7.1 (full DDL) + §7.2 (rationale comments)
 
 **Files to create**:
 - `src/iris/projects/schema.sql` — verbatim transcription of every CREATE TABLE / CREATE INDEX / CREATE VIRTUAL TABLE from spec §7.1. Inline rationale notes from §7.2 as SQL comments. End the file with `PRAGMA user_version = 1;`.
@@ -301,7 +301,7 @@ Goal: stand up `iris.sqlite` per spec §7, scaffold every CLAUDE.md the implemen
 
 **Phase**: 1 · **Effort**: M · **Blocks**: 1.5, 2.1+
 
-**References**: `IRIS Memory Restructure.md` §5.1 (Store 1), §7
+**References**: `memory-restructure.md` §5.1 (Store 1), §7
 
 **Files to create**:
 - `src/iris/projects/db.py` — public API: `connect(project_path: Path) -> sqlite3.Connection`, `init_schema(conn)`, `current_version(conn) -> int`, `migrate(conn, target_version: int)`. On connect: `PRAGMA journal_mode=WAL`, `PRAGMA foreign_keys=ON`, `PRAGMA synchronous=NORMAL`. `init_schema` executes `schema.sql` only if `user_version == 0`. `migrate` reserved for future schema bumps (no-op in V1).
@@ -340,7 +340,7 @@ Goal: stand up `iris.sqlite` per spec §7, scaffold every CLAUDE.md the implemen
 
 **Phase**: 1 · **Effort**: M · **Blocks**: 1.6, 1.10
 
-**References**: `IRIS Memory Restructure.md` §6 (filesystem layout)
+**References**: `memory-restructure.md` §6 (filesystem layout)
 
 **Files to modify**:
 - `src/iris/projects/__init__.py` — replace the Phase 0 stub. Public API:
@@ -387,7 +387,7 @@ Skip — folded into 1.5 and 1.6.
 **Phase**: 1 · **Effort**: S · **Blocks**: none (touches docs only)
 
 **Files to modify**:
-- `CLAUDE.md` — finalize "Memory System Migration" section. Confirm it points at `IRIS Memory Restructure.md`, REVAMP.md, and `src/iris/projects/CLAUDE.md`.
+- `CLAUDE.md` — finalize "Memory System Migration" section. Confirm it points at `memory-restructure.md`, REVAMP.md, and `src/iris/projects/CLAUDE.md`.
 - `src/iris/CLAUDE.md` — confirm module map matches reality post-Phase 1.
 
 **Commit**: `docs: refresh root navigation post-foundation`
@@ -438,7 +438,7 @@ Goal: every state change downstream of this phase writes an event row. Hash chai
 
 **Phase**: 2 · **Effort**: M · **Blocks**: 2.2, 2.3, all later memory writes
 
-**References**: `IRIS Memory Restructure.md` §4 (Layer 4), §7.1 events table, §7.2 (hash chaining rationale)
+**References**: `memory-restructure.md` §4 (Layer 4), §7.1 events table, §7.2 (hash chaining rationale)
 
 **Files to create**:
 - `src/iris/projects/events.py` — public API:
@@ -472,7 +472,7 @@ Goal: every state change downstream of this phase writes an event row. Hash chai
 
 **Phase**: 2 · **Effort**: M · **Blocks**: 2.4, 3.1+
 
-**References**: `IRIS Memory Restructure.md` §7.1 sessions table
+**References**: `memory-restructure.md` §7.1 sessions table
 
 **Files to create**:
 - `src/iris/projects/sessions.py` — public API:
@@ -537,7 +537,7 @@ Goal: every chat message and tool invocation persists to SQLite with FTS5 search
 
 **Phase**: 3 · **Effort**: M · **Blocks**: 3.3, 3.5
 
-**References**: `IRIS Memory Restructure.md` §7.1 messages + messages_fts
+**References**: `memory-restructure.md` §7.1 messages + messages_fts
 
 **Files to create**:
 - `src/iris/projects/messages.py` — `append_message(conn, *, session_id, role, content, event_id, token_count=None) -> str`. Insert into `messages` and into `messages_fts` (triggers handle this if defined; otherwise explicit insert). `search(conn, *, project_id, query, limit) -> list[dict]` using FTS5 BM25.
@@ -550,7 +550,7 @@ Goal: every chat message and tool invocation persists to SQLite with FTS5 search
 
 **Phase**: 3 · **Effort**: M · **Blocks**: 3.3, 3.6
 
-**References**: `IRIS Memory Restructure.md` §7.1 tool_calls, §9.3 (tool-result clearing)
+**References**: `memory-restructure.md` §7.1 tool_calls, §9.3 (tool-result clearing)
 
 **Files to create**:
 - `src/iris/projects/tool_calls.py` — `append_tool_call(conn, *, session_id, event_id, tool_name, input, success, output_summary=None, output_artifact_id=None, error=None, execution_time_ms=None) -> str`. `attach_output_artifact(conn, tool_call_id, artifact_id)`. `summarize_for_clearing(tool_call_id, output_text) -> str` returns `[Tool result for {name}: {1-line summary}. Full output as artifact {id}.]` for the agent-bridge to substitute into the conversation.
@@ -605,7 +605,7 @@ Goal: every chat message and tool invocation persists to SQLite with FTS5 search
 
 **Phase**: 3 · **Effort**: L · **Blocks**: Phase 4
 
-**References**: `IRIS Memory Restructure.md` §9.3 (single most impactful compaction rule)
+**References**: `memory-restructure.md` §9.3 (single most impactful compaction rule)
 
 **Files to modify**:
 - `iris-app/server/agent-bridge.ts`:
@@ -636,7 +636,7 @@ Goal: collapse the old `goals` / `decisions` / `learned_facts` tables into one `
 
 **Phase**: 4 · **Effort**: L · **Blocks**: 4.2, 4.3, all later memory tasks
 
-**References**: `IRIS Memory Restructure.md` §4 Layer 3, §7.1 memory_entries, §10.1 (creation), §10.4 (deletion)
+**References**: `memory-restructure.md` §4 Layer 3, §7.1 memory_entries, §10.1 (creation), §10.4 (deletion)
 
 **Files to create**:
 - `src/iris/projects/memory_entries.py` — public API:
@@ -657,7 +657,7 @@ Goal: collapse the old `goals` / `decisions` / `learned_facts` tables into one `
 
 **Phase**: 4 · **Effort**: L · **Blocks**: 4.3, 4.4
 
-**References**: `IRIS Memory Restructure.md` §10.1 (passive extraction), §11.4 (importance threshold)
+**References**: `memory-restructure.md` §10.1 (passive extraction), §11.4 (importance threshold)
 
 **Files to create**:
 - `src/iris/projects/extraction.py` — `extract_session(conn, session_id) -> list[str]` returns the IDs of proposed memories. Pulls all messages of the session, sends to Claude (Anthropic SDK from Python; key from `ANTHROPIC_API_KEY`) with a structured prompt asking for: findings, assumptions, caveats, open_questions, decisions, failure_reflections. Each candidate gets an LLM-assigned importance score 1–10. Filter to importance ≥ 4. For each, call `memory_entries.propose` with status='draft'.
@@ -703,7 +703,7 @@ Goal: collapse the old `goals` / `decisions` / `learned_facts` tables into one `
 
 **Phase**: 4 · **Effort**: L · **Blocks**: 4.6
 
-**References**: `IRIS Memory Restructure.md` §5.1 (Store 3), Appendix Decision Log (dual: DB + file)
+**References**: `memory-restructure.md` §5.1 (Store 3), Appendix Decision Log (dual: DB + file)
 
 **Files to create**:
 - `src/iris/projects/markdown_sync.py` — public API:
@@ -758,7 +758,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 **Phase**: 5 · **Effort**: M · **Blocks**: 5.2, 5.3
 
-**References**: `IRIS Memory Restructure.md` §5.1 (Store 2), §7.1 artifacts table
+**References**: `memory-restructure.md` §5.1 (Store 2), §7.1 artifacts table
 
 **Files to create**:
 - `src/iris/projects/artifacts.py` — public API:
@@ -831,7 +831,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 **Phase**: 6 · **Effort**: M · **Blocks**: 6.2, 6.3
 
-**References**: `IRIS Memory Restructure.md` §7.1 datasets + dataset_versions
+**References**: `memory-restructure.md` §7.1 datasets + dataset_versions
 
 **Files to create**:
 - `src/iris/projects/datasets.py` — `import_dataset(conn, project_path, *, file_path, name) -> str`. Computes content hash, copies to `datasets/raw/<dataset_id>/<sha>.<ext>`, inserts `datasets` and `dataset_versions` rows. Writes `dataset_import` event. `list_datasets(conn, project_id)`. `get_version(conn, dataset_version_id)`.
@@ -911,7 +911,7 @@ Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at
 
 **Phase**: 7 · **Effort**: L · **Blocks**: 7.2
 
-**References**: `IRIS Memory Restructure.md` §4 Layer 4 (analysis/runs index), §7.1 runs table
+**References**: `memory-restructure.md` §4 Layer 4 (analysis/runs index), §7.1 runs table
 
 **Files to create**:
 - `src/iris/projects/runs.py` — public API:
@@ -989,7 +989,7 @@ Goal: catalog every hardcoded op (the existing 17) into the `operations` table. 
 
 **Phase**: 8 · **Effort**: M · **Blocks**: 8.2
 
-**References**: `IRIS Memory Restructure.md` §4 Layer 5, §7.1 operations + operation_executions, §12
+**References**: `memory-restructure.md` §4 Layer 5, §7.1 operations + operation_executions, §12
 
 **Files to create**:
 - `src/iris/projects/operations_store.py` — public API:
@@ -1047,7 +1047,7 @@ Goal: catalog every hardcoded op (the existing 17) into the `operations` table. 
 
 **Phase**: 9 · **Effort**: L · **Blocks**: 9.2
 
-**References**: `IRIS Memory Restructure.md` §8 (full pipeline), §11.5 (over-retrieval defenses)
+**References**: `memory-restructure.md` §8 (full pipeline), §11.5 (over-retrieval defenses)
 
 **Files to create**:
 - `src/iris/projects/retrieval.py` — public API:
@@ -1075,7 +1075,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 **Phase**: 9 · **Effort**: L · **Blocks**: 9.4
 
-**References**: `IRIS Memory Restructure.md` §9.1 (segment structure), §9.2 (token budgets)
+**References**: `memory-restructure.md` §9.1 (segment structure), §9.2 (token budgets)
 
 **Files to create**:
 - `src/iris/projects/slice_builder.py` — `build_slice(conn, *, project_id, session_id, current_query=None, budgets=None) -> dict`. Returns 7 segments per spec §9.1: system_prompt, core_memory, dataset_context, retrieved_memories, prior_analyses, operations, conversation_window. Each segment respects its token budget. Segment 4 only populated if `should_retrieve(current_query)`.
@@ -1154,7 +1154,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 **Phase**: 10 · **Effort**: S · **Blocks**: 10.4
 
 **Files to create**:
-- `docs/memory.md` — short reference (~200 lines max). Defers to `IRIS Memory Restructure.md` for design; lists code locations for each layer; documents `propose → commit` flow; documents tool-result clearing.
+- `docs/memory.md` — short reference (~200 lines max). Defers to `memory-restructure.md` for design; lists code locations for each layer; documents `propose → commit` flow; documents tool-result clearing.
 
 **Commit**: `docs: add memory.md code-pointer reference`
 
@@ -1215,7 +1215,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 **Phase**: 11 · **Effort**: M · **Blocks**: 11.4
 
-**References**: `IRIS Memory Restructure.md` §14.2
+**References**: `memory-restructure.md` §14.2
 
 **Files to create**:
 - `src/iris/projects/embeddings.py` — abstract `EmbeddingProvider`. Implementations: `SentenceTransformerProvider("all-MiniLM-L6-v2")` (default, local, 384-dim), `OllamaProvider("nomic-embed-text")` (768-dim, optional). Selected via `[memory.embeddings]` in `config.toml`.
@@ -1264,7 +1264,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 **Phase**: 12 · **Effort**: L · **Blocks**: 12.2
 
-**References**: `IRIS Memory Restructure.md` §10.1 + Mem0 description
+**References**: `memory-restructure.md` §10.1 + Mem0 description
 
 **Files to modify**:
 - `src/iris/projects/extraction.py` — add `extract_turn(conn, *, message_id) -> list[str]`. Pulls just the assistant turn + its tool calls, asks Claude for candidates, dedup against existing memories at >0.85 similarity (vector or FTS5).
@@ -1316,7 +1316,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 **Phase**: 13 · **Effort**: L · **Blocks**: 13.2
 
-**References**: `IRIS Memory Restructure.md` §10.2
+**References**: `memory-restructure.md` §10.2
 
 **Files to create**:
 - `src/iris/projects/reflection.py` — accumulator on importance scores since last reflection. When sum > threshold (default: 5–8 substantive analyses' worth, configurable), trigger LLM call asking for higher-level insights. Store as `memory_type='reflection'` with high importance + evidence pointers to source memories.
@@ -1391,7 +1391,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 **Phase**: 15 · **Effort**: L · **Blocks**: 15.2
 
-**References**: `IRIS Memory Restructure.md` §12.2
+**References**: `memory-restructure.md` §12.2
 
 **Files to create**:
 - `src/iris/projects/op_validation.py` — `validate_operation(conn, op_id) -> dict`. Stages: static (imports, syntax via `ast.parse`), unit tests (run any included `tests/` against synthetic inputs in subprocess sandbox), sample run (against real project data). Promotes status `draft → validated` or `→ rejected`.
@@ -1435,7 +1435,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 **Phase**: 16 · **Effort**: M · **Blocks**: 16.2
 
-**References**: `IRIS Memory Restructure.md` §10.3, §11.3, §7.1 contradictions
+**References**: `memory-restructure.md` §10.3, §11.3, §7.1 contradictions
 
 **Files to create**:
 - `src/iris/projects/contradictions.py` — `detect_contradictions(conn, new_memory_id) -> list[str]` — LLM check against active memories of same scope/type; on positive, insert `contradictions` row, mark old `status='contradicted'`. `resolve(conn, contradiction_id, resolution_text, winning_memory_id)`.
@@ -1448,7 +1448,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 **Phase**: 16 · **Effort**: M · **Blocks**: 16.3
 
-**References**: `IRIS Memory Restructure.md` §10.3 (temporal decay)
+**References**: `memory-restructure.md` §10.3 (temporal decay)
 
 **Files to create**:
 - `src/iris/projects/staleness.py` — `scan(conn, project_id) -> list[str]` flags memories whose `last_validated_at` exceeds type-specific thresholds (90/30/60 days for finding/assumption/open_question). Sets `status='stale'`. Retrieval prefixes stale memories with `[Finding from {date}, may need revalidation]`.

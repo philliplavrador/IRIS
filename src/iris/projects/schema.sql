@@ -1,5 +1,5 @@
 -- IRIS per-project SQLite schema (spec §7.1)
--- Transcribed from IRIS Memory Restructure.md.
+-- Transcribed from docs/memory-restructure.md.
 -- Design inspired by event sourcing (append-only history), PROV-like
 -- provenance edges, and content-addressed artifact separation (§7).
 -- End of file sets PRAGMA user_version = 1 for migration tracking.

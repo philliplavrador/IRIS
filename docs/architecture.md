@@ -8,8 +8,8 @@ set of regenerated Markdown files.
 
 This document is the architectural overview. For deeper detail:
 
-- Memory system design → [`../IRIS Memory Restructure.md`](../IRIS%20Memory%20Restructure.md) (spec)
-- Build-order task ledger → [`../REVAMP.md`](../REVAMP.md)
+- Memory system design → [`memory-restructure.md`](memory-restructure.md) (spec)
+- Build-order task ledger → [`REVAMP.md`](REVAMP.md)
 - Operation math → [`operations.md`](operations.md)
 - Project workspace contract → [`projects.md`](projects.md)
 
@@ -335,8 +335,8 @@ always possible from L0.
 
 ## Pointers
 
-- Spec (authoritative, deep): [`../IRIS Memory Restructure.md`](../IRIS%20Memory%20Restructure.md)
-- Build order: [`../REVAMP.md`](../REVAMP.md)
+- Spec (authoritative, deep): [`memory-restructure.md`](memory-restructure.md)
+- Build order: [`REVAMP.md`](REVAMP.md)
 - Memory code map: [`../src/iris/projects/CLAUDE.md`](../src/iris/projects/CLAUDE.md)
 - Daemon routes: [`../src/iris/daemon/routes/CLAUDE.md`](../src/iris/daemon/routes/CLAUDE.md)
 - Webapp server: [`../iris-app/server/CLAUDE.md`](../iris-app/server/CLAUDE.md)

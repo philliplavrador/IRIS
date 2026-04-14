@@ -1,8 +1,8 @@
 # IRIS Memory Layer
 
 Authoritative overview of the V2 memory system (REVAMP Phases 1–17).
-For the design rationale, see [`../IRIS Memory Restructure.md`](../IRIS%20Memory%20Restructure.md).
-For the build ledger, see [`../REVAMP.md`](../REVAMP.md).
+For the design rationale, see [`memory-restructure.md`](memory-restructure.md).
+For the build ledger, see [`REVAMP.md`](REVAMP.md).
 
 ## Three storage substrates
 
@@ -53,6 +53,6 @@ Highlights: `/memory/slice`, `/memory/recall`, `/memory/entries*`,
 
 ## See also
 
-- [`../IRIS Memory Restructure.md`](../IRIS%20Memory%20Restructure.md) — design spec (authoritative)
+- [`memory-restructure.md`](memory-restructure.md) — design spec (authoritative)
 - [`architecture.md`](architecture.md) — system shape
 - [`../src/iris/projects/CLAUDE.md`](../src/iris/projects/CLAUDE.md) — module map

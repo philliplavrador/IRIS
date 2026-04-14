@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Maximalist validation gate for IRIS.
-# Runs the Standard validation gate from REVAMP.md.
+# Runs the Standard validation gate from docs/REVAMP.md.
 # Exits non-zero on any failure.
 
 set -euo pipefail

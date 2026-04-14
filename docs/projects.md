@@ -4,7 +4,7 @@ A **project** is a self-contained, portable analysis workspace. Every project bu
 
 Projects live under `projects/<project-id>/`. Only the committed `TEMPLATE/` skeleton, `projects/README.md`, `projects/CLAUDE.md`, and `projects/.gitignore` are tracked in git. Every real project is gitignored.
 
-The authoritative design reference is [`IRIS Memory Restructure.md` §6](../IRIS%20Memory%20Restructure.md) (Filesystem Layout) and §7 (Database Schema). This document is the human-facing contract: what exists on disk, what the lifecycle commands do, and how to read the truth.
+The authoritative design reference is [`memory-restructure.md` §6](memory-restructure.md) (Filesystem Layout) and §7 (Database Schema). This document is the human-facing contract: what exists on disk, what the lifecycle commands do, and how to read the truth.
 
 ---
 
@@ -211,8 +211,8 @@ Rules:
 
 - [architecture.md](architecture.md) — system architecture (daemon / webapp / engine)
 - [operations.md](operations.md) — operation math reference
-- [../IRIS Memory Restructure.md](../IRIS%20Memory%20Restructure.md) — full memory-system spec (§6 layout, §7 schema)
-- [../REVAMP.md](../REVAMP.md) — active task ledger for the memory rewrite
+- [memory-restructure.md](memory-restructure.md) — full memory-system spec (§6 layout, §7 schema)
+- [REVAMP.md](REVAMP.md) — active task ledger for the memory rewrite
 - [../projects/CLAUDE.md](../projects/CLAUDE.md) — projects directory nav
 - [../projects/TEMPLATE/CLAUDE.md](../projects/TEMPLATE/CLAUDE.md) — per-project nav stub
 - [../src/iris/projects/CLAUDE.md](../src/iris/projects/CLAUDE.md) — projects module map

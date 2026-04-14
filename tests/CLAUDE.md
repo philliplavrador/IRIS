@@ -56,7 +56,7 @@ cd iris-app && npm test      # Webapp tests (vitest + testing-library)
 ```
 
 The full REVAMP validation gate (every task) is in
-[`../REVAMP.md`](../REVAMP.md#standard-validation-gate-every-task).
+[`../docs/REVAMP.md`](../docs/REVAMP.md#standard-validation-gate-every-task).
 
 ## Adding a test for a new op
 
@@ -71,4 +71,4 @@ def test_<op_name>_transitions():
 - [../src/iris/CLAUDE.md](../src/iris/CLAUDE.md) — package layout + op authoring
 - [../src/iris/projects/CLAUDE.md](../src/iris/projects/CLAUDE.md) — memory module map
 - [../docs/operations.md](../docs/operations.md) — op catalog
-- [../REVAMP.md](../REVAMP.md) — task ledger
+- [../docs/REVAMP.md](../docs/REVAMP.md) — task ledger

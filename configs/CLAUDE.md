@@ -50,4 +50,4 @@ in-memory only.
 ## See also
 - [../CLAUDE.md](../CLAUDE.md) — repo root nav
 - [../src/iris/config.py](../src/iris/config.py) — loader + override logic
-- `IRIS Memory Restructure.md` §6 — filesystem layout spec
+- `docs/memory-restructure.md` §6 — filesystem layout spec

@@ -3,7 +3,7 @@
 Receives Claude Code tool-use JSON on stdin. If a Python file under src/ or
 tests/ was edited, runs ruff check --fix + ruff format on that file for fast
 feedback, then invokes scripts/check.sh (POSIX) or scripts/check.ps1 (Windows)
-to run the full Standard validation gate from REVAMP.md.
+to run the full Standard validation gate from docs/REVAMP.md.
 
 The full gate is intentionally heavy: it keeps the maximalist contract honest
 every time Claude edits a Python file. Agents and humans can invoke the gate
@@ -46,7 +46,7 @@ def main():
     # Opt-in full gate: set IRIS_HOOK_FULL_GATE=1 to run the maximalist gate
     # on every Python edit. Off by default to keep edit latency low; the gate
     # is still available via `bash scripts/check.sh` and is required before
-    # any REVAMP.md task commit.
+    # any docs/REVAMP.md task commit.
     if os.environ.get("IRIS_HOOK_FULL_GATE") == "1":
         if os.name == "nt":
             script = REPO_ROOT / "scripts" / "check.ps1"

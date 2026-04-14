@@ -9,7 +9,7 @@ loader.
 | Path | What it does |
 |---|---|
 | [engine/](engine/) | Analysis engine — types, AST, parser, cache, executor, ops, registry. Stable; not restructured by REVAMP. See [engine/CLAUDE.md](engine/CLAUDE.md). |
-| [projects/](projects/) | Project workspace lifecycle + the full memory system (SQLite + content-addressed FS + curated Markdown). **Under active rewrite** — see [projects/CLAUDE.md](projects/CLAUDE.md) and [../../REVAMP.md](../../REVAMP.md). |
+| [projects/](projects/) | Project workspace lifecycle + the full memory system (SQLite + content-addressed FS + curated Markdown). **Under active rewrite** — see [projects/CLAUDE.md](projects/CLAUDE.md) and [../../docs/REVAMP.md](../../docs/REVAMP.md). |
 | [daemon/](daemon/) | FastAPI backend (port 4002) that exposes engine + memory over HTTP. See [daemon/CLAUDE.md](daemon/CLAUDE.md). |
 | [cli.py](cli.py) | `iris` CLI entry point (argparse + orchestration). |
 | [config.py](config.py) | TOML config loader (single `configs/config.toml`) + per-project overrides. |
@@ -88,7 +88,7 @@ The Claude Code agent running in the Express server can also invoke the
 ## See also
 - [../../CLAUDE.md](../../CLAUDE.md) — repo root nav
 - [../../iris-app/CLAUDE.md](../../iris-app/CLAUDE.md) — webapp
-- [../../REVAMP.md](../../REVAMP.md) — memory rewrite ledger
-- [../../IRIS Memory Restructure.md](../../IRIS%20Memory%20Restructure.md) — design spec
+- [../../docs/REVAMP.md](../../docs/REVAMP.md) — memory rewrite ledger
+- [../../docs/memory-restructure.md](../../docs/memory-restructure.md) — design spec
 - [../../docs/operations.md](../../docs/operations.md) — op catalog
 - [../../docs/architecture.md](../../docs/architecture.md) — DSL, AST, cache

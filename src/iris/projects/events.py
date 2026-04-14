@@ -23,7 +23,7 @@ Design
   daemon is single-process and ``BEGIN IMMEDIATE`` plus the row lock
   on ``events`` is sufficient.
 
-See ``IRIS Memory Restructure.md`` §4 (Layer 4) and §7.2 (rationale).
+See ``docs/memory-restructure.md`` §4 (Layer 4) and §7.2 (rationale).
 """
 
 from __future__ import annotations

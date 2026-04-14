@@ -4,7 +4,7 @@ This is the committed skeleton copied into every new IRIS project. A real
 project is a self-contained, portable folder: copy or move the directory to
 back up, archive, or share the work.
 
-## Layout (spec: `IRIS Memory Restructure.md` §6)
+## Layout (spec: `docs/memory-restructure.md` §6)
 
 ```
 <project>/
@@ -42,4 +42,4 @@ are gitignored.
 
 - [../CLAUDE.md](../CLAUDE.md) — `projects/` directory navigation
 - [../../src/iris/projects/CLAUDE.md](../../src/iris/projects/CLAUDE.md) — lifecycle & memory API
-- `IRIS Memory Restructure.md` §6 — filesystem layout spec
+- `docs/memory-restructure.md` §6 — filesystem layout spec

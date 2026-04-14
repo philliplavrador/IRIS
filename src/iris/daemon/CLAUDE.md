@@ -49,4 +49,4 @@ over `src/iris/engine/` or `src/iris/projects/`.
 ## See also
 - [../projects/CLAUDE.md](../projects/CLAUDE.md) — memory module map
 - [routes/CLAUDE.md](routes/CLAUDE.md) — endpoint inventory
-- [../../../REVAMP.md](../../../REVAMP.md) — task ledger
+- [../../../docs/REVAMP.md](../../../docs/REVAMP.md) — task ledger

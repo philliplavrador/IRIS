@@ -20,7 +20,7 @@ Design notes
   a placeholder for future bumps; currently a no-op when
   ``target_version == current_version``.
 
-See ``IRIS Memory Restructure.md`` §5.1 (Store 1) and §7 for rationale.
+See ``docs/memory-restructure.md`` §5.1 (Store 1) and §7 for rationale.
 """
 
 from __future__ import annotations

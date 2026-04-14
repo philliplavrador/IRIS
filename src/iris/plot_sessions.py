@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from iris import __version__ as IRIS_VERSION
-from iris.engine import ExprNode, OpNode, PipelineContext, SourceNode
+from iris.engine import ExprNode, OpNode, PipelineContext
 
 DEFAULT_OUTPUT_ROOT = Path("outputs")
 _SAFE_CHARS_RE = re.compile(r"[^a-zA-Z0-9._-]+")
@@ -145,7 +145,7 @@ def store_plot_artifact(
     Returns the ``artifact_id`` (== SHA-256 of the bytes) on success or
     ``None`` if no project is active / the memory layer is unavailable.
     Never raises: the caller's plot rendering must not be blocked by a
-    memory-layer failure. See REVAMP.md Task 5.3.
+    memory-layer failure. See docs/REVAMP.md Task 5.3.
     """
     try:
         # Imports here so the plot session module stays importable in

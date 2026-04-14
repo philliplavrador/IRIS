@@ -25,7 +25,7 @@ consumption. Cycles are impossible in practice (parents are set once at
 start and never mutated) but the CTE uses ``UNION`` rather than ``UNION
 ALL`` so a pathological cycle terminates.
 
-See ``IRIS Memory Restructure.md`` §4 (Layer 4) and §7.1 (rationale for
+See ``docs/memory-restructure.md`` §4 (Layer 4) and §7.1 (rationale for
 column choices).
 """
 

@@ -1,6 +1,6 @@
 ## Per-project IRIS configuration.
 ## Values left blank/default; override as the project needs. See
-## `src/iris/projects/CLAUDE.md` and `IRIS Memory Restructure.md` §6 for layout.
+## `src/iris/projects/CLAUDE.md` and `docs/memory-restructure.md` §6 for layout.
 
 [project]
 name = ""

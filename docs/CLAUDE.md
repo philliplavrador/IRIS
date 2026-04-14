@@ -26,9 +26,9 @@ The following legacy design docs were deleted in Task 0.2; do not cite them:
 `analysis-assistant.md`, `IRIS_BEHAVIOR_PLAN.md`.
 
 For the ongoing rewrite, read
-[`../IRIS Memory Restructure.md`](../IRIS%20Memory%20Restructure.md) (spec) and
-[`../REVAMP.md`](../REVAMP.md) (task ledger) instead.
+[`memory-restructure.md`](memory-restructure.md) (spec) and
+[`REVAMP.md`](REVAMP.md) (task ledger) instead.
 
 ## See also
 - [../CLAUDE.md](../CLAUDE.md) — repo root nav
-- [../REVAMP.md](../REVAMP.md) — task ledger
+- [REVAMP.md](REVAMP.md) — task ledger
