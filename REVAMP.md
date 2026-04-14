@@ -93,7 +93,7 @@ Goal: clear every file destined for deletion before any rewrite begins. Build wi
 
 ---
 
-### [ ] Task 0.3 — Delete empty directories
+### [x] Task 0.3 — Delete empty directories
 
 **Phase**: 0 · **Effort**: S · **Blocks**: none
 
