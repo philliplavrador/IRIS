@@ -49,6 +49,7 @@ from pydantic import BaseModel, Field
 
 from iris.projects import db as _db
 from iris.projects import events as _events
+from iris.projects import markdown_sync as _markdown_sync
 from iris.projects import memory_entries as _memory_entries
 from iris.projects import messages as _messages
 from iris.projects import resolve_active_project
@@ -642,6 +643,25 @@ async def soft_delete_memory_entry(memory_id: str) -> dict[str, Any]:
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
         return {"data": _fetch_memory_row(conn, memory_id, project_id)}
+    finally:
+        conn.close()
+
+
+@router.post("/memory/regenerate_markdown")
+async def regenerate_markdown() -> dict[str, Any]:
+    """Manual trigger: rewrite ``memory/*.md`` from the SQLite source of truth.
+
+    Normally this happens automatically after every commit of memory entries
+    via :mod:`iris.projects.markdown_sync`. This endpoint exists so the UI
+    (and integration tests) can force a regeneration after out-of-band DB
+    edits or after a user undoes a stray Markdown change.
+    """
+    path = _active_project()
+    conn = _db.connect(path)
+    try:
+        _db.init_schema(conn)
+        _markdown_sync.regenerate_markdown(conn, path)
+        return {"data": {"ok": True}}
     finally:
         conn.close()
 

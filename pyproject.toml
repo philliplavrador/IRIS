@@ -44,6 +44,7 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
     "pandas>=2.3.3",
+    "watchdog>=4.0",
 ]
 
 [project.optional-dependencies]
