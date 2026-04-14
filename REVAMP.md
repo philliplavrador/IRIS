@@ -1211,7 +1211,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 11.3 — embeddings.py provider
+### [x] Task 11.3 — embeddings.py provider
 
 **Phase**: 11 · **Effort**: M · **Blocks**: 11.4
 
