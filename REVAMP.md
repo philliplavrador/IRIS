@@ -1501,6 +1501,11 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
+> **DEFERRED — NOT IN CURRENT DELIVERABLE.** Phases 18–23 port
+> SpikeLab neuroscience analysis into IRIS. Skipped to meet a
+> deadline. Resume per-phase later; each phase is independent
+> and no memory/retrieval/daemon/webapp code depends on this.
+
 ## Phase 18 — SpikeLab Port: Setup + Data Loaders
 
 ### [ ] Task 18.1 — Restructure engine/loaders/
