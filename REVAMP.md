@@ -245,7 +245,7 @@ Goal: clear every file destined for deletion before any rewrite begins. Build wi
 
 Goal: stand up `iris.sqlite` per spec §7, scaffold every CLAUDE.md the implementer needs, and rebuild project lifecycle so create/open/list works end-to-end via the webapp. No memory writes yet.
 
-### [ ] Task 1.1 — Author CLAUDE.md scaffolding (this is the meta-step; it deserves its own commit)
+### [x] Task 1.1 — Author CLAUDE.md scaffolding (this is the meta-step; it deserves its own commit)
 
 **Phase**: 1 · **Effort**: L · **Blocks**: every later task that references a CLAUDE.md
 

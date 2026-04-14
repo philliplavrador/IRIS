@@ -63,7 +63,25 @@ iris-app/
 - **Message parsing**: extracts tool_use blocks, plot paths (regex), and markdown content from SDK messages
 - **Virtualized chat**: `@tanstack/react-virtual` for large conversation histories
 
-## Pending work
+## Memory-rewrite status
+
+The backend memory layer is being rebuilt per
+[`../IRIS Memory Restructure.md`](../IRIS%20Memory%20Restructure.md) /
+[`../REVAMP.md`](../REVAMP.md). Frontend changes are minimized during that
+rewrite — the full Appendix A UX (curation panel, contradictions inbox,
+provenance drawer, dataset cards, operation catalog) is **deferred** until the
+backend stabilizes (REVAMP Phases 18+). Only narrow updates land in
+Phases 1–17:
+
+- Phase 1.11 — project store points at new `/api/projects/*` endpoints.
+- Phase 4.7 — curation ritual uses `/memory/entries` commit flow.
+- Phase 9.5 — agent bridge consumes the slice-based system prompt.
+- Phase 10.5 — Memory Inspector surfaces Markdown-file draft proposals.
+
+See [server/CLAUDE.md](server/CLAUDE.md) and
+[src/renderer/CLAUDE.md](src/renderer/CLAUDE.md) for the per-module breakdown.
+
+## Pending work (non-memory)
 
 - Suggestions UI (recommended next analysis steps)
 - Data preview in FileManager (tabular grid, HDF5 tree)
@@ -81,3 +99,6 @@ npm test           # vitest
 ## See also
 - [../CLAUDE.md](../CLAUDE.md) — repo root nav
 - [../src/iris/CLAUDE.md](../src/iris/CLAUDE.md) — Python engine
+- [server/CLAUDE.md](server/CLAUDE.md) — Express proxy + agent bridge contract
+- [src/renderer/CLAUDE.md](src/renderer/CLAUDE.md) — frontend module map
+- [../REVAMP.md](../REVAMP.md) — memory rewrite ledger
