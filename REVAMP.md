@@ -1108,7 +1108,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 9.6 — Tests for retrieval + slice + Phase 9 E2E
+### [x] Task 9.6 — Tests for retrieval + slice + Phase 9 E2E
 
 **Phase**: 9 · **Effort**: M · **Blocks**: Phase 10
 
