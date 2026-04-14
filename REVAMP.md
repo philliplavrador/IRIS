@@ -601,7 +601,7 @@ Goal: every chat message and tool invocation persists to SQLite with FTS5 search
 
 ---
 
-### [ ] Task 3.6 — Tool-result clearing (V1 critical)
+### [x] Task 3.6 — Tool-result clearing (V1 critical)
 
 **Phase**: 3 · **Effort**: L · **Blocks**: Phase 4
 

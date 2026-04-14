@@ -58,6 +58,11 @@ rules = """
 [agent.dials]
 autonomy = "medium"   # "low" | "medium" | "high"
 pushback = "medium"   # "low" | "medium" | "high"
+# REVAMP Task 3.6 / spec §9.3 — when a tool_result body exceeds this rough
+# token budget (len/4 heuristic) it is swapped for a one-line stub in the
+# agent-bridge's SDK message cache. The durable copy stays in SQLite +
+# artifacts. Default of 500 is the spec's recommended V1 threshold.
+clear_tool_results_above_tokens = 500
 
 # ---------------------------------------------------------------------------
 # [ops.*] — per-operation parameter defaults.

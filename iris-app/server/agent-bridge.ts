@@ -7,6 +7,12 @@ import { execSync } from 'child_process'
 import { resolve } from 'path'
 import { getIrisRoot } from './lib/paths.js'
 import { daemonPost } from './services/daemon-client.js'
+import {
+  approximateTokens,
+  clearToolResults,
+  DEFAULT_CLEAR_THRESHOLD_TOKENS,
+  type SdkMessage,
+} from './services/tool-result-clearing.js'
 
 if (!process.env.CLAUDE_CODE_GIT_BASH_PATH) {
   // Try to locate bash via PATH (use `where` on Windows, `which` elsewhere)
@@ -123,6 +129,7 @@ async function endMemorySessionInternal(
   if (!sid) return
   projectMemorySessions.delete(projectName)
   clearPendingForProject(projectName)
+  clearCacheForProject(projectName)
   try {
     await ensureActiveProject(projectName)
     await daemonPost(
@@ -166,6 +173,55 @@ type PendingToolCall = {
   started_at: number
 }
 const pendingToolCalls = new Map<string, PendingToolCall>() // key: SDK tool_use_id
+
+/**
+ * REVAMP Task 3.6 — Tool-result clearing (spec §9.3).
+ *
+ * The Claude Code SDK does not let us mutate its in-flight conversation
+ * buffer, so we maintain our own append-only cache of SDK messages keyed by
+ * project. After a tool_result lands, if its serialized content exceeds the
+ * configured threshold we rewrite the cached copy (via `clearToolResults`)
+ * to a one-line stub. The memory-layer slice + websocket-replay paths read
+ * from this cache, so every later turn sees the compacted form.
+ *
+ * TODO: once Express has a TOML parser, read the threshold from
+ * `[agent.dials].clear_tool_results_above_tokens` in configs/config.toml
+ * instead of falling back to the in-module default.
+ */
+const projectMessageCache = new Map<string, SdkMessage[]>()
+
+function appendToCache(projectName: string, msg: SdkMessage): void {
+  const arr = projectMessageCache.get(projectName) ?? []
+  arr.push(msg)
+  projectMessageCache.set(projectName, arr)
+}
+
+function clearCacheForProject(projectName: string): void {
+  projectMessageCache.delete(projectName)
+}
+
+/** Test-only: read the cached SDK messages for a project. */
+export function getCachedMessages(projectName: string): SdkMessage[] {
+  return projectMessageCache.get(projectName) ?? []
+}
+
+/**
+ * Rewrite cached copies of tool_result blocks for `toolUseIds` that blow the
+ * size budget. Called after the matching tool_result has been persisted so
+ * the durable copy lives in SQLite/artifacts before we swap the in-memory
+ * buffer for a stub. Pure-function logic lives in services/tool-result-clearing.
+ */
+function maybeClearToolResultsFromCache(
+  projectName: string,
+  toolUseIds: string[],
+  thresholdTokens: number = DEFAULT_CLEAR_THRESHOLD_TOKENS,
+): void {
+  if (toolUseIds.length === 0) return
+  const arr = projectMessageCache.get(projectName)
+  if (!arr || arr.length === 0) return
+  const next = clearToolResults(arr, toolUseIds, { thresholdTokens })
+  if (next !== arr) projectMessageCache.set(projectName, next)
+}
 
 function firstLine(text: string, maxChars: number): string {
   const line = (text ?? '').split(/\r?\n/).map((s) => s.trim()).find((s) => s.length > 0) ?? ''
@@ -250,17 +306,23 @@ function persistSdkMessage(projectName: string, memorySessionId: string, msg: an
   if (msg.type === 'user' && msg.message?.content) {
     const blocks = msg.message.content as any[]
     const textParts: string[] = []
+    const toClear: string[] = []
     for (const b of blocks) {
       if (b?.type === 'tool_result' && typeof b.tool_use_id === 'string') {
         const content =
           typeof b.content === 'string' ? b.content : JSON.stringify(b.content)
         finalizeToolCall(memorySessionId, b.tool_use_id, content, b.is_error === true)
+        // REVAMP Task 3.6: flag oversized tool_results for in-cache clearing.
+        if (approximateTokens(content) > DEFAULT_CLEAR_THRESHOLD_TOKENS) {
+          toClear.push(b.tool_use_id)
+        }
       } else if (b?.type === 'text' && typeof b.text === 'string') {
         textParts.push(b.text)
       }
     }
     const text = textParts.join('\n').trim()
     if (text) postMessageRow(memorySessionId, 'tool', text)
+    if (toClear.length) maybeClearToolResultsFromCache(projectName, toClear)
   }
 }
 
@@ -505,6 +567,9 @@ export async function sendMessage(prompt: string, broadcast: BroadcastFn, projec
       // memory layer. Fire-and-forget — failures log but never break chat.
       if (projectName) {
         const captured = msg
+        // REVAMP Task 3.6: keep a per-project SDK message cache so later
+        // turns (and the slice builder) see cleared tool_result bodies.
+        appendToCache(projectName, captured as SdkMessage)
         memorySessionPromise.then((sid) => {
           if (sid) persistSdkMessage(projectName, sid, captured)
         })
