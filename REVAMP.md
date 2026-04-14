@@ -1025,7 +1025,7 @@ Goal: catalog every hardcoded op (the existing 17) into the `operations` table. 
 
 ---
 
-### [ ] Task 8.4 — Tests for operations + Phase 8 E2E
+### [x] Task 8.4 — Tests for operations + Phase 8 E2E
 
 **Phase**: 8 · **Effort**: S · **Blocks**: Phase 9
 

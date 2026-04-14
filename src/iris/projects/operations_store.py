@@ -128,6 +128,7 @@ def register(
     docstring: str,
     source_code: str | None = None,
     source_hash: str | None = None,
+    code_artifact_id: str | None = None,
 ) -> str:
     """Register an operation in the catalog and return its ``op_id``.
 
@@ -159,6 +160,17 @@ def register(
     if kind not in KINDS:
         raise ValueError(f"unknown kind {kind!r}; expected one of {sorted(KINDS)}")
 
+    # Idempotency: if an op with the same (project_id, name, version) is
+    # already registered, return its existing op_id instead of inserting a
+    # duplicate row. The startup cataloger (Task 8.2) calls register() on
+    # every boot, so duplicates on restart are expected and must be a no-op.
+    existing = conn.execute(
+        "SELECT op_id FROM operations WHERE project_id IS ? AND name = ? AND version = ? LIMIT 1",
+        (project_id, name, version),
+    ).fetchone()
+    if existing is not None:
+        return existing[0]
+
     validation_status = "validated" if kind == "hardcoded" else "draft"
 
     # Split the signature into input/output halves the schema expects.
@@ -177,8 +189,12 @@ def register(
     code_hash = source_hash or ""
 
     # TODO(Phase 8.2): bundle source_code via artifacts.store() and set
-    # this to the resulting artifact_id. Empty string is a placeholder.
-    code_artifact_id = ""
+    # this to the resulting artifact_id. Callers that haven't wired Phase 5
+    # yet can pass ``code_artifact_id=None`` — we fall back to an empty
+    # sentinel, which only survives the FK check when foreign_keys are
+    # temporarily disabled (the startup cataloger does this).
+    if code_artifact_id is None:
+        code_artifact_id = ""
 
     op_id = uuid.uuid4().hex
     created_at = _now_iso()
@@ -407,8 +423,12 @@ def search(
     ``project_id=None`` matches globally-registered ops. Pass a concrete
     project id to scope to that project only.
     """
+    # Qualify every column with the ``o.`` alias — ``operations_fts``
+    # shadows ``name`` and ``description``, which otherwise make the
+    # SELECT ambiguous.
+    qualified_cols = ", ".join(f"o.{c}" for c in _OP_KEYS)
     rows = conn.execute(
-        f"SELECT {_OP_COLUMNS}, bm25(operations_fts) AS score "
+        f"SELECT {qualified_cols}, bm25(operations_fts) AS score "
         "FROM operations_fts "
         "JOIN operations o ON o.rowid = operations_fts.rowid "
         "WHERE operations_fts MATCH ? AND o.project_id IS ? "
