@@ -754,7 +754,7 @@ Goal: collapse the old `goals` / `decisions` / `learned_facts` tables into one `
 
 Goal: every "heavy" output (plot, report, slide deck, code file, cache) lives at `artifacts/<sha256>/` with metadata in SQLite.
 
-### [ ] Task 5.1 — artifacts.py
+### [x] Task 5.1 — artifacts.py
 
 **Phase**: 5 · **Effort**: M · **Blocks**: 5.2, 5.3
 
@@ -1127,7 +1127,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ## Phase 10 — V1 Wrap-Up + Phase Gate
 
-### [ ] Task 10.1 — Rewrite docs/architecture.md
+### [x] Task 10.1 — Rewrite docs/architecture.md
 
 **Phase**: 10 · **Effort**: M · **Blocks**: 10.4
 
@@ -1149,7 +1149,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 10.3 — Add docs/memory.md
+### [x] Task 10.3 — Add docs/memory.md
 
 **Phase**: 10 · **Effort**: S · **Blocks**: 10.4
 
