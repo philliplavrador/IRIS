@@ -874,6 +874,29 @@ async def should_retrieve(q: str = Query(..., min_length=1)) -> dict[str, Any]:
     return {"data": {"should": _retrieval.should_retrieve(q)}}
 
 
+class SliceRequest(BaseModel):
+    session_id: str = Field(min_length=1)
+    current_query: str | None = None
+    budgets: dict[str, int] | None = None
+
+
+@router.post("/memory/slice")
+async def build_slice(req: SliceRequest) -> dict[str, Any]:
+    """Assemble the 7-segment system-prompt slice (spec §9.1)."""
+    conn, project_id = _open()
+    try:
+        result = _slice_builder.build_slice(
+            conn,
+            project_id=project_id,
+            session_id=req.session_id,
+            current_query=req.current_query,
+            budgets=req.budgets,
+        )
+        return {"data": result}
+    finally:
+        conn.close()
+
+
 # -- operations -------------------------------------------------------------
 
 

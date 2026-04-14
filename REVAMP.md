@@ -1084,7 +1084,7 @@ Recency formula: `exp(-Δdays / half_life_days)` with `half_life_days` from proj
 
 ---
 
-### [ ] Task 9.4 — Daemon /memory/slice
+### [x] Task 9.4 — Daemon /memory/slice
 
 **Phase**: 9 · **Effort**: S · **Blocks**: 9.5
 
