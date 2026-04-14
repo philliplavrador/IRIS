@@ -962,7 +962,7 @@ Each call writes corresponding events (`transform_run` for start/complete).
 
 ---
 
-### [ ] Task 7.5 — Frontend run history + Phase 7 E2E
+### [x] Task 7.5 — Frontend run history + Phase 7 E2E
 
 **Phase**: 7 · **Effort**: M · **Blocks**: Phase 8
 

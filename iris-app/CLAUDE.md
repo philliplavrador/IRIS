@@ -100,6 +100,9 @@ npm run client     # Vite only
 npm test           # vitest
 ```
 
+Note: Playwright E2E (including the Phase 7 `e2e/phase7.spec.ts` referenced
+in REVAMP Task 7.5) is deferred — validation is `npx tsc --noEmit` + `npm test`.
+
 ## See also
 - [../CLAUDE.md](../CLAUDE.md) — repo root nav
 - [../src/iris/CLAUDE.md](../src/iris/CLAUDE.md) — Python engine

@@ -1,4 +1,4 @@
-import { BarChart3, FileText, FolderOpen, Brain, CheckSquare, Sliders } from 'lucide-react'
+import { BarChart3, FileText, FolderOpen, Brain, CheckSquare, Sliders, History } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs'
 import { PlotViewer } from '../visualization/PlotViewer'
@@ -7,6 +7,7 @@ import { FileManager } from './FileManager'
 import { MemoryInspector } from './MemoryInspector'
 import { CurationRitual } from './CurationRitual'
 import { BehaviorConfig } from './BehaviorConfig'
+import { RunHistory } from './RunHistory'
 import { cn } from '../../lib/utils'
 import type { WorkspaceTab } from '../../types'
 
@@ -17,6 +18,7 @@ const tabs: Array<{ value: WorkspaceTab; label: string; icon: React.ReactNode }>
   { value: 'memory', label: 'Memory', icon: <Brain className="h-3.5 w-3.5" /> },
   { value: 'curation', label: 'Curate', icon: <CheckSquare className="h-3.5 w-3.5" /> },
   { value: 'behavior', label: 'Behavior', icon: <Sliders className="h-3.5 w-3.5" /> },
+  { value: 'runs', label: 'Runs', icon: <History className="h-3.5 w-3.5" /> },
 ]
 
 export function WorkspaceTabs() {
@@ -69,6 +71,10 @@ export function WorkspaceTabs() {
 
       <TabsContent value="behavior" className="flex-1 min-h-0 animate-fade-in">
         <BehaviorConfig />
+      </TabsContent>
+
+      <TabsContent value="runs" className="flex-1 min-h-0 animate-fade-in">
+        <RunHistory />
       </TabsContent>
     </Tabs>
   )
